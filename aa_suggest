@@ -1,0 +1,74 @@
+# vim:syntax=apparmor
+# SPDX-License-Identifier: GPL-2.0-only
+# SPDX-License-Identifier: GPL-3.0-only
+
+abi <abi/3.0>,
+
+include <tunables/global>
+
+@{exec_path}      = /{,usr/}{,local/}bin/aa_suggest{,.py}
+@{test_exec_path} = /{,usr/}{,local/}bin/test_aa_suggest{,.py}
+
+profile aa_suggest @{exec_path} {
+  include <abstractions/base>
+  include <abstractions/consoles>
+  include <abstractions/python>
+
+  @{exec_path} r,
+
+  /{,usr/}bin/python3.[0-9]{,[0-9]} rix,
+  /{,usr/}bin/env rix,
+
+  owner @{PROC}/@{pid}/fd/ r,
+
+  # Allow to read system logs
+  /{run,var}/log/journal/ r,
+  /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/ r,
+  /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/system.journal r,
+  /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/system@[0-9a-f]*[0-9a-f]-*.journal r,
+  /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/user-@{uid}@[0-9a-f]*[0-9a-f]-*.journal r,
+  /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/user-@{uid}.journal r,
+
+  /etc/machine-id r,
+  @{PROC}/sys/kernel/random/boot_id r,
+
+  deny /tmp/aa_suggest.am_i_confined.???????? w, # silence the check
+  deny /usr/{,local/}bin/ r,
+
+  # apport debug hook from OS
+  # (/etc/python3.10/sitecustomize.py)
+  deny /etc/default/apport r,
+  deny /etc/ssl/openssl.cnf r,
+  deny /etc/apt/apt.conf.d/{,*} r,
+  deny /usr/share/dpkg/cputable r,
+  deny /usr/share/dpkg/tupletable r,
+
+  include if exists <local/aa_suggest>
+}
+
+profile test_aa_suggest @{test_exec_path} {
+  include <abstractions/base>
+  include <abstractions/consoles>
+  include <abstractions/python>
+
+  @{test_exec_path} r,
+  @{exec_path} r,
+
+  /{,usr/}bin/python3.[0-9]{,[0-9]} rix,
+  /{,usr/}bin/env rix,
+
+  /usr/{,local/}bin/ r,  # module loading (test target) fails otherwise
+
+  deny /tmp/aa_suggest.am_i_confined.???????? w, # silence the check
+  deny /usr/{,local/}bin/__pycache__/{,**} rw,
+
+  # apport debug hook from OS
+  # (/etc/python3.10/sitecustomize.py)
+  deny /etc/default/apport r,
+  deny /etc/ssl/openssl.cnf r,
+  deny /etc/apt/apt.conf.d/{,*} r,
+  deny /usr/share/dpkg/cputable r,
+  deny /usr/share/dpkg/tupletable r,
+
+  include if exists <local/test_aa_suggest>
+}
