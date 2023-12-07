@@ -994,7 +994,7 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
                'x' in maskSet:
 
                 maskSet.add('i')
-                toColorize['i'] = ('White', '0')
+                toColorize['i'] = ('White', '1')  # bold
 
     # Add accompanied masks
     accompaniedMasks = {
@@ -1006,7 +1006,7 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
 
         if k in maskSet:
             if v not in maskSet:  # colorize only if not present
-                toColorize[v] = ('White', '0')
+                toColorize[v] = ('White', '1')  # bold
                 maskSet.add(v)
 
     # Convert not yet implemented to usable
@@ -1826,7 +1826,8 @@ def display(plainLines, padding_, args_):
                 print(f"\n  {profile}")
 
         else:
-            prefix = f"{l.pop('profile'):29} "
+            pP = adjustPadding(l.get('profile'), 29)
+            prefix = f"{l.pop('profile'):{pP}} "
 
         rule = l.pop('rule')
 
