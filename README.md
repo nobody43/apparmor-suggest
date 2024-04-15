@@ -56,16 +56,8 @@ $ sudo install -m 755 -o root -g root aa_suggest.py /usr/local/bin/          # i
 $ sudo apparmor_parser --add /etc/apparmor.d/aa_suggest                      # confine profile for executable
 ```
 
-## Deinstallation
-```sh
-$ sudo apparmor_parser --remove /etc/apparmor.d/aa_suggest
-$ sudo rm /etc/apparmor.d/aa_suggest
-$ sudo rm /usr/local/bin/aa_suggest.py
-$ sudo rm /dev/shm/apparmor_suggest/timestamp.latest
-$ sudo rm -d /dev/shm/apparmor_suggest/
-```
-
 ## Usage advice
+- Always fight against [automation bias](https://en.wikipedia.org/wiki/Automation_bias)
 - If a program requests some access - it doesn't mean you should unquestionably allow it
 - Ensure your system is free of malware, even better, write profiles on ephemeral systems
 - Increasing number of tech abstactions also increases chances of unreliable results
@@ -73,7 +65,7 @@ $ sudo rm -d /dev/shm/apparmor_suggest/
 
 ## Planned features
 ### for BETA
-- padding
+- better padding
 - compatibility with more distros
 
 ### for 1.0
@@ -84,6 +76,15 @@ $ sudo rm -d /dev/shm/apparmor_suggest/
 ## Supported distros
 - Debian 12
 - Ubuntu 22.04
+
+## Deinstallation
+```sh
+$ sudo apparmor_parser --remove /etc/apparmor.d/aa_suggest
+$ sudo rm /etc/apparmor.d/aa_suggest
+$ sudo rm /usr/local/bin/aa_suggest.py
+$ sudo rm /dev/shm/apparmor_suggest/timestamp.latest
+$ sudo rm -d /dev/shm/apparmor_suggest/
+```
 
 ## Links
 - https://github.com/roddhjav/apparmor.d - Full set of AppArmor profiles
