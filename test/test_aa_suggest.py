@@ -38,17 +38,17 @@ class simpleTests(unittest.TestCase):
         self.assertNotEqual(findTempTailPair('file1.T84F32',    'default'),             (None,         None))
         self.assertNotEqual(findTempTailPair('file3~',          'default'),             (None,         None))
         # Rule styles
-        self.assertEqual(findTempTailPair('file1.T84F32',       'roddhjav/apparmor.d'), ('.T84F32',    '{,.@{rand6}}'))
-        self.assertEqual(findTempTailPair('file2.tmpR7NB38',    'roddhjav/apparmor.d'), ('.tmpR7NB38', '{,.tmp@{rand6}}'))
-        self.assertEqual(findTempTailPair('file3.tmp',          'roddhjav/apparmor.d'), ('.tmp',       '{,.tmp}'))
-        self.assertEqual(findTempTailPair('file4~',             'roddhjav/apparmor.d'), ('~',          '{,~}'))
-        self.assertEqual(findTempTailPair('file5.tmp1234',      'roddhjav/apparmor.d'), ('.tmp1234',   '{,.tmp@{int}}'))
+        self.assertEqual(findTempTailPair('file1.T84F32',       'AppArmor.d'), ('.T84F32',    '{,.@{rand6}}'))
+        self.assertEqual(findTempTailPair('file2.tmpR7NB38',    'AppArmor.d'), ('.tmpR7NB38', '{,.tmp@{rand6}}'))
+        self.assertEqual(findTempTailPair('file3.tmp',          'AppArmor.d'), ('.tmp',       '{,.tmp}'))
+        self.assertEqual(findTempTailPair('file4~',             'AppArmor.d'), ('~',          '{,~}'))
+        self.assertEqual(findTempTailPair('file5.tmp1234',      'AppArmor.d'), ('.tmp1234',   '{,.tmp@{int}}'))
 
     def test_composeFileMask(self):
         redg = '\x1b[7;31m' # background red
         gryg = '\x1b[7;90m' # background grey
-        whtb = '\x1b[1;37m' # bold white
         wht  = '\x1b[0;37m' # white
+        whtb = '\x1b[1;37m' # bold white
         grn  = '\x1b[0;32m' # regular green
         mgn  = '\x1b[0;35m' # regular magenta
         blu  = '\x1b[0;34m'
@@ -60,15 +60,16 @@ class simpleTests(unittest.TestCase):
         self.assertEqual(composeFileMask({'a', 'r', 'c'},      None, False), f'rac')
         self.assertEqual(composeFileMask({'a', 'w'},           None, False), f'w')            # 'a' and 'w' are mutually exclusive
         self.assertEqual(composeFileMask({'a', 'r', 'c'},      None, True),  f'r{grn}w{rst}') # adapted, exclusive
-        self.assertEqual(composeFileMask({'P', 'x', 'r'},      None, False), f'rPx')
-        self.assertEqual(composeFileMask({'x', 'U', 'P', 'r'}, None, True),  f'rPUx')
-        self.assertEqual(composeFileMask({'U', 'P', 'x'},      None, False), f'{whtb}r{rst}PUx')  # accompanied mask
+        self.assertEqual(composeFileMask({'P', 'x', 'r'},      None, False), f'r{whtb}P{rst}x')
+        self.assertEqual(composeFileMask({'x', 'U', 'P', 'r'}, None, True),  f'r{whtb}P{rst}Ux')
+        self.assertEqual(composeFileMask({'U', 'P', 'x'},      None, False), f'{whtb}r{rst}{whtb}P{rst}Ux')  # accompanied mask; transition suggestion
         self.assertEqual(composeFileMask({'Y', 'H', '9'},      None, False), f'9HY')  # preserved, sorted unknown masks
         self.assertEqual(composeFileMask({'Y', 'r', 'c'},      None, False), f'rcY')  # not adapted, not colorized with unknown mask
         self.assertEqual(composeFileMask({'r', 'Y', 'c'},      None, True),  f'r{grn}w{rst}Y')
         self.assertEqual(composeFileMask({'w', 'r', 'x'},      None, False), f'r{redg}x{rst}{redg}w{rst}') # colorized dangerous combinations
         self.assertEqual(composeFileMask({'r', 'c', 'm'},      None, False), f'{redg}m{rst}r{redg}c{rst}')
         self.assertEqual(composeFileMask({'r', 'x', 'N'},      None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'N'
+        self.assertEqual(composeFileMask({'r', 'x', 'N', 'P'}, None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'N'; suggestion consumed
         self.assertNotEqual(composeFileMask({'w', 'r', 'x'},   None, False), f'rxw')  # not highlighted
         self.assertNotEqual(composeFileMask({'w', 'r', 'x'},   None, True),  f'rxw')
         self.assertNotEqual(composeFileMask({'r', 'c', 'm'},   None, False), f'mrc')
@@ -85,7 +86,7 @@ class simpleTests(unittest.TestCase):
         # Automatic transitions
         self.assertEqual(composeFileMask({'w', 'c'},     {'w', 'c'}, True),  f'{grn}w{rst}')    # transition consumed by adaption
         self.assertEqual(composeFileMask({'w', 'c'},     {'w', 'c'}, False), f'{blu}w{rst}{blu}c{rst}')
-        self.assertEqual(composeFileMask({'r', 'x', 'I'},     {'r'}, False), f'{blu}r{rst}{whtb}i{rst}x')  # hinting with 'I' as ix candidate
+        self.assertEqual(composeFileMask({'r', 'x', 'i'},     {'r'}, False), f'{blu}r{rst}{whtb}i{rst}x')  # hinting with 'i' as ix candidate
         self.assertEqual(composeFileMask({'r', 'x'},          {'x'}, False), f'r{blu}x{rst}')              # not ix
 
     def test_isRequestedProfile(self):     # Current profile [line]     # Requested profile(s)
@@ -143,7 +144,23 @@ class simpleTests(unittest.TestCase):
 #        self.assertTrue(isRequestedProfile( 'run-parts▶synth',          ['thnys', 'ru*arts', 'wc']))
 #        self.assertTrue(isRequestedProfile( 'run-parts//motd',          ['synth', 'ru*arts', 'wc']))
         self.assertFalse(isRequestedProfile('run-parts//motd▶wc▶synth', ['synth*', '*wc']))
-        #self.assertEqual(isRequestedProfile('dconf', ['d*o*f']), Assert)
+        self.assertRaises(NotImplementedError, isRequestedProfile, 'dconf', ['d*o*f'])
+        self.assertRaises(NotImplementedError, isRequestedProfile, 'dconf', ['d*o*f', 'synth'])
+        self.assertRaises(NotImplementedError, isRequestedProfile, 'dconf', ['synth', 'd*o*f'])
+
+    def test_isRequestedOperation(self):     # Current operation(s)                       # Requested operations(s), synthetic
+        self.assertTrue(isRequestedOperation({'dbus_bind', 'dbus_send', 'dbus_receive'},  ['dbus_bind', 'open']))
+        self.assertTrue(isRequestedOperation({'dbus_send', 'dbus_bind', 'dbus_receive'},  ['dbus_bind', 'open']))
+        self.assertTrue(isRequestedOperation({'dbus_bind', 'dbus_send', 'dbus_receive'},  ['open', 'dbus_bind']))
+        self.assertTrue(isRequestedOperation({'dbus_send', 'dbus_bind', 'dbus_receive'},  ['open', 'dbus_bind']))
+        self.assertTrue(isRequestedOperation({'dbus_receive', 'dbus_bind', 'dbus_send'},  ['mknod', 'dbus_bind', 'open']))
+        self.assertTrue(isRequestedOperation({'dbus_receive', 'dbus_bind', 'dbus_send'},  ['dbus_send', 'dbus_bind', 'open']))
+        self.assertFalse(isRequestedOperation({'dbus_receive', 'dbus_bind', 'dbus_send'}, ['open']))
+        self.assertFalse(isRequestedOperation({'dbus_receive', 'dbus_bind'},              ['dbus_send', 'open']))
+        self.assertFalse(isRequestedOperation({'dbus_receive', 'dbus_bind'},              ['open', 'dbus_send']))
+        self.assertRaises(NotImplementedError, isRequestedOperation, {'dbus_bind'}, ['dbus*'])
+        self.assertRaises(NotImplementedError, isRequestedOperation, {'dbus_bind'}, ['open', 'dbus*'])
+        self.assertRaises(NotImplementedError, isRequestedOperation, {'dbus_bind'}, ['dbus*', 'open'])
 
     def test_makeHashable(self):
         self.assertEqual(makeHashable({'path': '@{run}/user/@{uid}/doc/', 'comm': {'synth1', 'synth2'}, 'path_diffs': [[(0, 6), '/run'], [(12, 18), '0']]}),
@@ -166,6 +183,7 @@ class simpleTests(unittest.TestCase):
                                        "[('comm', ['2', '1']), ('path', '/tmp/synth'), ('subdict', [('synth2', '2'), ('synth1', '1')])]")
         self.assertNotEqual(makeHashable({'path': '/tmp/synth', 'subdict': {'synth2': 2, 'synth1': 1}, 'comm': {2, 1}}),
                                        "[('comm', [2, 1]), ('path', '/tmp/synth'), ('subdict', [('synth2', 2), ('synth1', 1)])]")
+        self.assertRaises(ValueError, makeHashable, {'path': '@{run}/user/@{uid}/doc/', 'comm': {'synth1', 'synth2'}, 'path_diffs': [[(0, 6), '/run'], [(12, 18), '0']], 'timestamp': 1})
 
     def test_isTransitionComm(self):
         blu  = '\x1b[0;34m'
@@ -189,24 +207,41 @@ class simpleTests(unittest.TestCase):
 {'operation': 'exec',      'name': '/usr/bin/echo', 'comm': 'sh',              'requested_mask': 'x',  'profile': 'apt'}  # not a transition
 ), (
 {'operation': 'file_mmap', 'name': '/usr/bin/test', 'comm':       'test',      'requested_mask': 'r',  'profile': 'apt▶test'},
-{'operation': 'file_mmap', 'name': '/usr/bin/test', 'comm': f'{blu}test{rst}', 'requested_mask': 'rI', 'profile': 'apt'}  # ix candidate
+{'operation': 'file_mmap', 'name': '/usr/bin/test', 'comm': f'{blu}test{rst}', 'requested_mask': 'ri', 'profile': 'apt'}  # ix candidate
 ), (
 {'operation': 'file_mmap', 'name': '/bin/test',     'comm':       'test',      'requested_mask': 'r',  'profile': 'apt▶test'},
-{'operation': 'file_mmap', 'name': '/bin/test',     'comm': f'{blu}test{rst}', 'requested_mask': 'rI', 'profile': 'apt'}  # different path
+{'operation': 'file_mmap', 'name': '/bin/test',     'comm': f'{blu}test{rst}', 'requested_mask': 'ri', 'profile': 'apt'}  # different path
 ), (
 {'operation': 'file_mmap', 'name': '/usr/local/bin/test', 'comm':       'test',      'requested_mask': 'r', 'profile': 'apt▶test'},
 {'operation': 'file_mmap', 'name': '/usr/local/bin/test', 'comm': f'{blu}test{rst}', 'requested_mask': 'r', 'profile': 'apt'}  # transition, possible ix candidate, but wrong path
 ), (
 {'operation': 'file_mmap', 'name': '/usr/bin/dash', 'comm': 'im-launch',       'requested_mask': 'r', 'profile': 'gnome-session-binary▶im-launch'},
 {'operation': 'file_mmap', 'name': '/usr/bin/dash', 'comm': 'im-launch',       'requested_mask': 'r', 'profile': 'gnome-session-binary▶im-launch'}  # transition, but not an ix candidate
+), (
+{'operation': 'file_inherit', 'name': '/var/lib/unattended-upgrades/kept-back', 'comm':       'wc',      'requested_mask': 'r', 'timestamp': 1712748312919872, 'trust': 10, 'profile': 'run-parts//motd▶wc'},
+{'operation': 'file_inherit', 'name': '/var/lib/unattended-upgrades/kept-back', 'comm': f'{blu}wc{rst}', 'requested_mask': 'r', 'timestamp': 1712748312919872, 'trust': 10, 'profile': 'run-parts//motd'}
 ),
         )
         for inpt,result in line_pairs:
             self.assertEqual(adaptProfileAutoTransitions(inpt), result)
 
+    def test_findExecType(self):
+        self.assertEqual(findExecType('echo'),          'i')
+        self.assertEqual(findExecType('awk'),           'i')
+        self.assertEqual(findExecType('grep'),          'i')
+        self.assertEqual(findExecType('sort'),          'i')
+        self.assertEqual(findExecType('ps'),            'P')
+        self.assertEqual(findExecType('spice-vdagent'), 'P')
+        self.assertIsNone(findExecType('nonexistent'))
+
     def test_getBaseBin(self):
+        grn  = '\x1b[0;32m' # regular green
+        rst  = '\x1b[0m'
         self.assertEqual(getBaseBin('/usr/bin/echo'), 'echo')
         self.assertEqual(getBaseBin('/bin/echo'),     'echo')
+        self.assertEqual(getBaseBin(f'/{grn}{{,usr/}}{rst}bin/echo'), 'echo')
+        self.assertEqual(getBaseBin(f'/{grn}{{usr/,}}{rst}bin/echo'), 'echo')
+        self.assertEqual(getBaseBin(f'{grn}@{{bin}}{rst}/echo'),      'echo')
         self.assertIsNone(getBaseBin('/usr/sbin/echo'))
         self.assertIsNone(getBaseBin('/sbin/echo'))
         self.assertIsNone(getBaseBin('/usr/bin/dir/echo'))
@@ -217,20 +252,21 @@ class colorizationTests(unittest.TestCase):
 
     def test_updatePostcolorizationDiffs(self):
         postcolorizationDiffs = (
-(({'addr': '@/tmp/dbus-????????'}, (11, 19), 'l49GNGRo', 'addr'), {'addr': '@/tmp/dbus-????????', 'addr_diffs': [[(11, 19), 'l49GNGRo']]}), # single replacement
+(({'addr': '@/tmp/dbus-????????'}, (11, 19), 'l49GNGRo', 'addr'), {'addr': '@/tmp/dbus-????????', 'addr_diffs': [[(11, 19), 'l49GNGRo']]}),  # single replacement
 (({'path': '/run/user/@{uid}/at-spi/bus'},                                       (10, 16), '1000', 'path'), {'path': '/run/user/@{uid}/at-spi/bus',   'path_diffs': [[(10, 16), '1000']]}),
-(({'path': '@{run}/user/@{uid}/at-spi/bus', 'path_diffs': [[(10, 16), '1000']]}, (0, 6),   '/run', 'path'), {'path': '@{run}/user/@{uid}/at-spi/bus', 'path_diffs': [[(0, 6), '/run'], [(12, 18), '1000']]}), # diffs in input with differently-sized replacement - shift had happened in the result
-((  {'path': '@{user_config_dirs}/ibus/bus/@{md5}-unix{,-wayland}-@{int}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(66, 77), '-wayland'], [(78, 84), '0']]}, (29, 35), 'e561af98c3584a29a4eab8a761aceaf9', 'path'),
-    {'path': '@{user_config_dirs}/ibus/bus/@{md5}-unix{,-wayland}-@{int}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(29, 35), 'e561af98c3584a29a4eab8a761aceaf9'], [(40, 51), '-wayland'], [(52, 58), '0']]}), # item was inserted in the middle and all items to the right were shifted
-(({'target': '/usr/lib/xorg/Xorg', 'path': '@{lib}/xorg/Xorg'}, (0, 6), '/usr/lib', 'path'), {'target': '/usr/lib/xorg/Xorg', 'path': '@{lib}/xorg/Xorg', 'path_diffs': [[(0, 6), '/usr/lib']]}), # multiple eligible keys - neighbor entity must NOT be affected
-(({'path': '/etc/gdm{,3}/custom.conf'},    (8, 12),  '',       'path'), {'path': '/etc/gdm{,3}/custom.conf',    'path_diffs': [[(8, 12),  '']]}), # empty capturing group
-(({'path': '/etc/gdm/custom.conf.??????'}, (22, 28), 'aBcXy9', 'path'), {'path': '/etc/gdm/custom.conf.??????', 'path_diffs': [[(22, 28), 'aBcXy9']]}), # temp tail first
-(({'path': '/etc/gdm{,3}/custom.conf.??????', 'path_diffs': [[(22, 28), 'aBcXy9']]}, (8, 12), '', 'path'), {'path': '/etc/gdm{,3}/custom.conf.??????', 'path_diffs': [[(8, 12), ''], [(26, 32), 'aBcXy9']]}), # another replacement to the left before right one
+(({'path': '@{run}/user/@{uid}/at-spi/bus', 'path_diffs': [[(10, 16), '1000']]}, (0, 6),   '/run', 'path'), {'path': '@{run}/user/@{uid}/at-spi/bus', 'path_diffs': [[(0, 6), '/run'], [(12, 18), '1000']]}),  # diffs in input with differently-sized replacement - shift had happened in the result
+((  {'path': '@{user_config_dirs}/ibus/bus/@{hex32}-unix{,-wayland}-@{int}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(66, 77), '-wayland'], [(78, 84), '0']]}, (29, 35), 'e561af98c3584a29a4eab8a761aceaf9', 'path'),
+    {'path': '@{user_config_dirs}/ibus/bus/@{hex32}-unix{,-wayland}-@{int}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(29, 35), 'e561af98c3584a29a4eab8a761aceaf9'], [(40, 51), '-wayland'], [(52, 58), '0']]}),  # item was inserted in the middle and all items to the right were shifted
+(({'target': '/usr/lib/xorg/Xorg', 'path': '@{lib}/xorg/Xorg'}, (0, 6), '/usr/lib', 'path'), {'target': '/usr/lib/xorg/Xorg', 'path': '@{lib}/xorg/Xorg', 'path_diffs': [[(0, 6), '/usr/lib']]}),  # multiple eligible keys - neighbor entity must NOT be affected
+(({'path': '/etc/gdm{,3}/custom.conf'},    (8, 12),  '',       'path'), {'path': '/etc/gdm{,3}/custom.conf',    'path_diffs': [[(8, 12),  '']]}),  # empty capturing group
+(({'path': '/etc/gdm/custom.conf.??????'}, (22, 28), 'aBcXy9', 'path'), {'path': '/etc/gdm/custom.conf.??????', 'path_diffs': [[(22, 28), 'aBcXy9']]}),  # temp tail first
+(({'path': '/etc/gdm{,3}/custom.conf.??????', 'path_diffs': [[(22, 28), 'aBcXy9']]}, (8, 12), '', 'path'), {'path': '/etc/gdm{,3}/custom.conf.??????', 'path_diffs': [[(8, 12), ''], [(26, 32), 'aBcXy9']]}),  # another replacement to the left before right one
         )
         for i,r in postcolorizationDiffs:
             self.assertEqual(updatePostcolorizationDiffs(i[0], i[1], i[2], i[3]), r)
 
     def test_highlightWords(self):
+        '''"/" means regular directory, not necessary root directory'''
         red = '\x1b[0;31m'
         ylw = '\x1b[0;33m'
         rst = '\x1b[0m'
@@ -255,7 +291,6 @@ class colorizationTests(unittest.TestCase):
 ('/.ssh/id_ecdsa-sk',    f'/.ssh/{red}id_ecdsa-sk{rst}'),
 ('/.ssh/id_ed25519',     f'/.ssh/{red}id_ed25519{rst}'),
 ('/.ssh/id_ed25519-sk',  f'/.ssh/{red}id_ed25519-sk{rst}'),
-('Mutter/IdleMonitor', 'Mutter/IdleMonitor'),
 ('/ssh_host_dsa_key',       f'/{red}ssh_host_dsa_{red}key{rst}{rst}'),
 ('/ssh_host_rsa_key',       f'/{red}ssh_host_rsa_{red}key{rst}{rst}'),
 ('/ssh_host_ecdsa_key',     f'/{red}ssh_host_ecdsa_{red}key{rst}{rst}'),
@@ -272,6 +307,7 @@ class colorizationTests(unittest.TestCase):
 ('01', '01'),
 ('000', '000'),
 ('101', '101'),
+('/arphic-bkai00mp/', '/arphic-bkai00mp/'),
 ('cookies', 'cookies'),
 ('cookies.sqlite', f'{red}cookies{rst}.sqlite'),
 ('cookies.sqlite-wal', f'{red}cookies{rst}.sqlite-wal'),
@@ -279,21 +315,28 @@ class colorizationTests(unittest.TestCase):
 ('credence', 'credence'),
 ('sacred', 'sacred'),
 ('accredited', 'accredited'),
+('hotkey', 'hotkey'),
 ('keypass', f'{red}key{rst}{red}pass{rst}'),
 ('keygen', 'keygen'),
 ('passkey', f'{red}pass{rst}{red}key{rst}'),
 ('/etc/shadow', f'/etc/{red}shadow{rst}'),
 ('shadows', 'shadows'),
 ('foreshadowing', 'foreshadowing'),
+('shadowcoord', 'shadowcoord'),
+('shadowmap', 'shadowmap'),
 ('/pass.txt', f'/{red}pass{rst}.txt'),
+('/usr/share/pass.txt', f'/usr/share/pass.txt'),
+('/etc/usr/share/pass.txt', f'/etc/usr/share/{red}pass{rst}.txt'),
 ('passage', 'passage'),
 ('compass', 'compass'),
 ('Private', f'{red}Priv{rst}ate'),
+('/System.Private.CoreLib.dll', '/System.Private.CoreLib.dll'),
 ('privatise', 'privatise'),
 ('nonprivate', 'nonprivate'),
 ('secret.txt', f'{red}secret{rst}.txt'),
 ('nonsecret', 'nonsecret'),
 ('secretary', 'secretary'),
+('/ISRG_Root_X1.crt', '/ISRG_Root_X1.crt'),
 ('/root/', f'/{red}root{rst}/'),
 ('roots', 'roots'),
 ('chroot', 'chroot'),
@@ -301,13 +344,14 @@ class colorizationTests(unittest.TestCase):
 ('/site.key', f'/site.{red}key{rst}'),
 ('keyboard', 'keyboard'),
 ('turkey', 'turkey'),
-#('rooturkey', f'{red}root{rst}ur{red}key{rst}'), # masking injection attempt; TODO
-('/turkey/site.key', f'/turkey/site.{red}key{rst}'), # one assertion and one substitution
+#('rooturkey', f'{red}root{rst}ur{red}key{rst}'),  # masking injection attempt; TODO
+('/turkey/site.key', f'/turkey/site.{red}key{rst}'),  # one assertion and one substitution
 # Volatile
 ('/#123', f'/#{ylw}123{rst}'),
+('/usr/share/#123', f'/usr/share/#123'),
 ('/#123abc', f'/#123abc'),
-('aBcXy9', 'aBcXy9'), # isolated
-('-aBcXy9XXZ', '-aBcXy9XXZ'), # dirty overlap; unreliable
+('aBcXy9', 'aBcXy9'),  # isolated
+('-aBcXy9XXZ', '-aBcXy9XXZ'),  # dirty overlap; unreliable
 ('-AbcXyz', f'-{ylw}AbcXyz{rst}'),
 ('-AbcXyz/', f'-{ylw}AbcXyz{rst}/'),
 ('-aBcXy90', '-aBcXy90'),
@@ -325,11 +369,12 @@ class colorizationTests(unittest.TestCase):
 ('123.daemon/', '123.daemon/'),
 ('.Daemon', '.Daemon'),
 ('.Socket', '.Socket'),
-('-abcxy9', f'-{ylw}abcxy9{rst}'),
+('.network1', '.network1'),
+('-abcxy9', f'-abcxy9'),
 ('.ABCXY9', f'.{ylw}ABCXY9{rst}'),
 ('-aBcDwXy9', f'-{ylw}aBcDwXy9{rst}'),
 ('.AbcdWxyz', f'.{ylw}AbcdWxyz{rst}'),
-('-abcdwxy9', f'-{ylw}abcdwxy9{rst}'),
+('-abcdwxy9', f'-abcdwxy9'),
 ('.12346789/', '.12346789/'),
 ('/123-abcdwxyz', '/123-abcdwxyz'),
 ('/123.ABCDWXYZ/', '/123.ABCDWXYZ/'),
@@ -339,12 +384,18 @@ class colorizationTests(unittest.TestCase):
 ('.aBcDeVwXy9', f'.{ylw}aBcDeVwXy9{rst}'),
 ('.AbcdeVwxyz', f'.{ylw}AbcdeVwxyz{rst}'),
 ('-abcdevwxy9', f'-{ylw}abcdevwxy9{rst}'),
+('/usr/share/123-abcdevwxy9', f'/usr/share/123-abcdevwxy9'),
+('/etc/usr/share/123-abcdevwxy9', f'/etc/usr/share/123-{ylw}abcdevwxy9{rst}'),
 ('.1234567890', '.1234567890'),
 ('.abcdevwxyz', '.abcdevwxyz'),
 ('.ABCDEVWXYZ', '.ABCDEVWXYZ'),
 ('.Abcdevwxyz/', '.Abcdevwxyz/'),
 ('-Abcdevwxy1', '-Abcdevwxy1'),
 ('.PackageKit', '.PackageKit'),
+('.PolicyKit1', '.PolicyKit1'),
+('.GeoClue2', '.GeoClue2'),
+('.login1', '.login1'),
+('Mutter/IdleMonitor', 'Mutter/IdleMonitor'),
 ('/.#lk0x00005578fbd925d0.', f'/.#lk0x{ylw}00005578fbd925d0{rst}.'),
 ('d8e8fca2dc0f896fd7cb4cb0031ba249', 'd8e8fca2dc0f896fd7cb4cb0031ba249'),
 ('.d8e8fca2dc0f896fd7cb4cb0031ba249/', f'.{ylw}d8e8fca2dc0f896fd7cb4cb0031ba249{rst}/'),
@@ -387,11 +438,11 @@ class colorizationTests(unittest.TestCase):
 ('/gvfs-metadata/root-6478f559.log', f'/gvfs-metadata/{red}root{rst}-{ylw}6478f559{rst}.log'),
 # Multiple
 ('/keys/creds/cred.key', f'/{red}key{rst}s/{red}cred{rst}s/{red}cred{rst}.{red}key{rst}'),
-('@a0d3d01e32484f6b92ad0327b593962b-a0d3d01e32484f6b92ad0327b593962b', f'@{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}-{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}'), # two of the same
+('@a0d3d01e32484f6b92ad0327b593962b-a0d3d01e32484f6b92ad0327b593962b', f'@{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}-{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}'),  # two of the same
 ('/0852a2ae-4809-4ea5-8d48-7e666d21a5f5/0852a2ae-4809-4ea5-8d48-7e666d21a5f5', f'/{ylw}0852a2ae-4809-4ea5-8d48-7e666d21a5f5{rst}/{ylw}0852a2ae-4809-4ea5-8d48-7e666d21a5f5{rst}'),
-('/e561af98c3584a29a4eab8a761aceaf9/a0d3d01e32484f6b92ad0327b593962b/' , f'/{ylw}e561af98c3584a29a4eab8a761aceaf9{rst}/{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}/'), # same regex, different values (overlapping)
-('/df935541-42fe-44ef-b37a-59af947d2f8b3956e4f515ab190c84e8', f'/df935541-42fe-44ef-b37a-{ylw}59af947d2f8b3956e4f515ab190c84e8{rst}'), # consuming overlap
-('-0327a5b9f676b500327a5b9f676b50542f4d2a58f766a19542f', '-0327a5b9f676b500327a5b9f676b50542f4d2a58f766a19542f'), # incorrect
+('/e561af98c3584a29a4eab8a761aceaf9/a0d3d01e32484f6b92ad0327b593962b/' , f'/{ylw}e561af98c3584a29a4eab8a761aceaf9{rst}/{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}/'),  # same regex, different values (overlapping)
+('/df935541-42fe-44ef-b37a-59af947d2f8b3956e4f515ab190c84e8', f'/df935541-42fe-44ef-b37a-{ylw}59af947d2f8b3956e4f515ab190c84e8{rst}'),  # consuming overlap
+('-0327a5b9f676b500327a5b9f676b50542f4d2a58f766a19542f', '-0327a5b9f676b500327a5b9f676b50542f4d2a58f766a19542f'),  # incorrect
 ('screen/ccdda718_5099_4509_a984_05540a913901', f'screen/{ylw}ccdda718_5099_4509_a984_05540a913901{rst}'),
 ('/var/log/journal/e561af98c3584a29a4eab8a761aceaf9/a0d3d01e32484f6b92ad0327b593962b-000000000000d3fc-0005f87685c0290f.journal' , f'/var/log/journal/{ylw}e561af98c3584a29a4eab8a761aceaf9{rst}/{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}-000000000000d3fc-0005f87685c0290f.journal'),
         )
@@ -431,6 +482,12 @@ class regexTests(unittest.TestCase):
     {'path': '/{,usr/}bin/{,g,m}awk',                   'operation': {'open'}, 'path_diffs': [[(1, 8), 'usr/'], [(12, 18), 'm']]}),
 (   {'path': '/bin/python3.10',                         'operation': {'open'}},
     {'path': '/{,usr/}bin/python3.[0-9]{,[0-9]}',       'operation': {'open'}, 'path_diffs': [[(1, 8), ''],     [(20, 33), '10']]}),
+(   {'path': '/lib/python3.10/',                        'operation': {'open'}},
+    {'path': '/{,usr/}lib/python3.[0-9]{,[0-9]}/',      'operation': {'open'}, 'path_diffs': [[(1, 8), ''],     [(20, 33), '10']]}),
+(   {'path': '/usr/lib/python3.10/',                    'operation': {'open'}},
+    {'path': '/{,usr/}lib/python3.[0-9]{,[0-9]}/',      'operation': {'open'}, 'path_diffs': [[(1, 8), 'usr/'], [(20, 33), '10']]}),
+(   {'path': '/usr/local/lib/python3.10/',              'operation': {'open'}},
+    {'path': '/usr/local/lib/python3.[0-9]{,[0-9]}/',   'operation': {'open'}, 'path_diffs': [[(23, 36), '10']]}),
 (   {'path': '/home/user/.config/ibus/bus/e561af98c3584a29a4eab8a761aceaf8-', 'operation': {'open'}},
     {'path': '@{HOME}/.config/ibus/bus/[0-9a-f]*[0-9a-f]-', 'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(25, 42), 'e561af98c3584a29a4eab8a761aceaf8']], 'path_prefix': 'owner'}),
 (   {'path': '/var/lib/apt/lists/ie.archive.ubuntu.com_ubuntu_dists_jammy_main_dep11_Components-amd64.yml.gz', 'operation': {'open'}},
@@ -439,10 +496,16 @@ class regexTests(unittest.TestCase):
     {'path': '@{user_share_dirs}/kcookiejar/cookies.??????',    'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.local/share'], [(38, 44), 'aBcXy9']], 'path_prefix': 'owner'}),
 (   {'path': '/var/log/journal/e561af98c3584a29a4eab8a761aceaf8/system@84dc5cc7a30f49d19b1412b97218d200-00000000001e258e-0006093052d8dbd6.journal', 'operation': {'open'}},
     {'path': '/var/log/journal/[0-9a-f]*[0-9a-f]/system@[0-9a-f]*[0-9a-f]-*.journal', 'operation': {'open'}, 'path_diffs': [[(17, 34), 'e561af98c3584a29a4eab8a761aceaf8'], [(42, 59), '84dc5cc7a30f49d19b1412b97218d200'], [(60, 61), '00000000001e258e-0006093052d8dbd6']]}),
+(   {'path': '/var/log/journal/e561af98c3584a29a4eab8a761aceaf8/system@84dc5cc7a30f49d19b1412b97218d200-00000000001e258e-0006093052d8dbd6.[te*st].te??st', 'operation': {'open'}},
+    {'path': '/var/log/journal/[0-9a-f]*[0-9a-f]/system@[0-9a-f]*[0-9a-f]-*.\[te\*st\].te\?\?st', 'operation': {'open'}, 'path_diffs': [[(17, 34), 'e561af98c3584a29a4eab8a761aceaf8'], [(42, 59), '84dc5cc7a30f49d19b1412b97218d200'], [(60, 61), '00000000001e258e-0006093052d8dbd6'], [(62, 63), ''], [(66, 67), ''], [(70, 71), ''], [(75, 76), ''], [(77, 78), '']]}),
+(   {'path': '/var/log/journal/e561af98c3584a29a4eab8a761aceaf8/system@00000000001e258e-0006093052d8dbd6.journal', 'operation': {'open'}},
+    {'path': '/var/log/journal/[0-9a-f]*[0-9a-f]/system@*.journal', 'operation': {'open'}, 'path_diffs': [[(17, 34), 'e561af98c3584a29a4eab8a761aceaf8'], [(42, 43), '00000000001e258e-0006093052d8dbd6']]}),
 (   {'path': '/tmp/systemd-private-779146be998c4b178253781e20277618-systemd-logind.service-h5Ctde/', 'operation': {'open'}},
     {'path': '/tmp/systemd-private-[0-9a-f]*[0-9a-f]-systemd-logind.service-??????/', 'operation': {'open'}, 'path_diffs': [[(21, 38), '779146be998c4b178253781e20277618'], [(62, 68), 'h5Ctde']], 'path_prefix': 'owner'}),
 (   {'path': '/home/user/.cache/fontconfig/807752c9e168308eb5108dacded5237a-le64.cache-7', 'operation': {'open'}},
     {'path': '@{HOME}/.cache/fontconfig/[0-9a-f]*[0-9a-f]-le64.cache-7', 'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(26, 43), '807752c9e168308eb5108dacded5237a']], 'path_prefix': 'owner'}),
+(   {'path': '/var/cache/fontconfig/807752c9e168308eb5108dacded5237a-le64.cache-7', 'operation': {'open'}},
+    {'path': '/var/cache/fontconfig/[0-9a-f]*[0-9a-f]-le64.cache-7', 'operation': {'open'}, 'path_diffs': [[(22, 39), '807752c9e168308eb5108dacded5237a']], 'path_prefix': 'owner'}),
 (   {'path': '/home/user/.cache/fontconfig/807752c9e168308eb5108dacded5237a-le64.cache-7.TMP-Ke7L9W', 'operation': {'open'}},
     {'path': '@{HOME}/.cache/fontconfig/[0-9a-f]*[0-9a-f]-le64.cache-7.TMP-??????', 'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(26, 43), '807752c9e168308eb5108dacded5237a'], [(61, 67), 'Ke7L9W']], 'path_prefix': 'owner'}),
 (   {'path': '/proc/3003/fdinfo/8',                     'operation': {'open'}},
@@ -461,22 +524,47 @@ class regexTests(unittest.TestCase):
     {'path': '/tmp/tmp.??????????/',                    'operation': {'open'}, 'path_diffs': [[(9, 19), 'Oe4yP6mWT4']], 'path_prefix': 'owner'}),
 (   {'path': '/run/netns/cni-e4b9714f-cbf5-45a8-9fbf-3ac3b47fd809', 'operation': {'open'}},
     {'path': '@{run}/netns/cni-[0-9a-f]*[0-9a-f]',      'operation': {'open'}, 'path_diffs': [[(0, 6), '/run'], [(17, 34), 'e4b9714f-cbf5-45a8-9fbf-3ac3b47fd809']]}),
-(   {'path': '/sys/devices/pci0000:00/',                'operation': {'open'}},
-    {'path': '@{sys}/devices/pci[0-9]*/',               'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(18, 24), '0000:00']]}),
 (   {'path': '/home/user/.cache/thumbnails/fail/gnome-thumbnail-factory/d7d9f01923147d3126f4d8dc459a958f.png', 'operation': {'open'}},
     {'path': '@{HOME}/.cache/thumbnails/fail/gnome-thumbnail-factory/*.png', 'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(55, 56), 'd7d9f01923147d3126f4d8dc459a958f']], 'path_prefix': 'owner'}),
 (   {'path': '/home/user/xauth_aBcXy9',                 'operation': {'open'}},
     {'path': '@{HOME}/xauth_??????',                    'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(14, 20), 'aBcXy9']], 'path_prefix': 'owner'}),
+(   {'path': '/tmp/Mozillac843286e-fb29-4915-aa17-db3a6df86497-',            'operation': {'open'}},
+    {'path': '/tmp/Mozilla[0-9a-f]*[0-9a-f]-',          'operation': {'open'}, 'path_diffs': [[(12, 29), 'c843286e-fb29-4915-aa17-db3a6df86497']], 'path_prefix': 'owner'}),
+(   {'path': '/tmp/Mozilla{c843286e-fb29-4915-aa17-db3a6df86497}-',            'operation': {'open'}},
+    {'path': '/tmp/Mozilla\{[0-9a-f]*[0-9a-f]\}-',      'operation': {'open'}, 'path_diffs': [[(12, 13), ''], [(14, 31), 'c843286e-fb29-4915-aa17-db3a6df86497'], [(31, 32), '']], 'path_prefix': 'owner'}),
+(   {'path': '/][*{}?^[[]]{}*? ?\*/mHwu2E.tmp',           'operation': {'open'}},
+    {'path': '/\]\[\*\{\}\?\^\[\[\]\]\{\}\*\? \?\*/??????.tmp', 'operation': {'open'}, 'path_diffs': [[(1, 2), ''], [(3, 4), ''], [(5, 6), ''], [(7, 8), ''], [(9, 10), ''], [(11, 12), ''], [(13, 14), ''], [(15, 16), ''], [(17, 18), ''], [(19, 20), ''], [(21, 22), ''], [(23, 24), ''], [(25, 26), ''], [(27, 28), ''], [(29, 30), ''], [(32, 33), ''], [(37, 43), 'mHwu2E']], 'path_prefix': 'owner'}),
+(   {'path': '/var/lib/gdm3/.cache/mesa_shader_cache/5b/630568b4dc7a281bca68647783eb1b338fd9ce.tmp', 'operation': {'open'}},
+    {'path': '/var/lib/gdm{,3}/.cache/mesa_shader_cache/[0-9a-f][0-9a-f]/[0-9a-f]*[0-9a-f].tmp', 'operation': {'open'}, 'path_diffs': [[(12, 16), '3'], [(42, 58), '5b'], [(59, 76), '630568b4dc7a281bca68647783eb1b338fd9ce']]}),
+(   {'path': '/usr/lib/kde/',                           'operation': {'open'}},
+    {'path': '/{,usr/}lib/kde{,3,4}/',                  'operation': {'open'}, 'path_diffs': [[(1, 8), 'usr/'], [(15, 21), '']]}),
+(   {'path': '/lib/kde4/',                              'operation': {'open'}},
+    {'path': '/{,usr/}lib/kde{,3,4}/',                  'operation': {'open'}, 'path_diffs': [[(1, 8), ''], [(15, 21), '4']]}),
+(   {'path': '/lib/aarch64-linux-musl/',                'operation': {'open'}},
+    {'path': '/{,usr/}lib/@{multiarch}/',               'operation': {'open'}, 'path_diffs': [[(1, 8), ''], [(12, 24), 'aarch64-linux-musl']]}),
+(   {'path': '/usr/lib/x86_64-linux-gnu/',              'operation': {'open'}},
+    {'path': '/{,usr/}lib/@{multiarch}/',               'operation': {'open'}, 'path_diffs': [[(1, 8), 'usr/'], [(12, 24), 'x86_64-linux-gnu']]}),
+(   {'path': '/usr/lib/arm-linux-gnueabihf/',           'operation': {'open'}},
+    {'path': '/{,usr/}lib/@{multiarch}/',               'operation': {'open'}, 'path_diffs': [[(1, 8), 'usr/'], [(12, 24), 'arm-linux-gnueabihf']]}),
+(   {'path': '/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.', 'operation': {'open'}},
+    {'path': '@{sys}/fs/cgroup/user.slice/user-@{uid}.slice/user@@{uid}.', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(33, 39), '1000'], [(51, 57), '1000']]}),
+(   {'path': '/sys/devices/pci0000:00/0000:00:1f.3/drm/card1/metrics/e12693c1-5c3d-4fe4-8fc2-6c3ae26b04d3/',           'operation': {'open'}},
+    {'path': '@{sys}/devices/pci????:??/????:??:??.?/drm/card[0-9]*/metrics/[0-9a-f]*[0-9a-f]/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(18, 25), '0000:00'], [(26, 38), '0000:00:1f.3'], [(47, 53), '1'], [(62, 79), 'e12693c1-5c3d-4fe4-8fc2-6c3ae26b04d3']]}),
+(   {'path': '/sys/devices/pci0000:00/0000:00:1f.3/0000:00:00.2/', 'operation': {'open'}},
+        {'path': '@{sys}/devices/pci????:??/????:??:??.?/????:??:??.?/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(18, 25), '0000:00'], [(26, 38), '0000:00:1f.3'], [(39, 51), '0000:00:00.2']]}),
     # UNIX sockets
 (   {'path': '@/home/user/.cache/ibus/dbus-qGivRGmK',   'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
-    {'path': '@/home/*/.cache/ibus/dbus-????????',      'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(7, 8), 'user'], [(26, 34), 'qGivRGmK']], 'path_prefix': 'owner'}),  # not actually 'path'
+    {'path': '@/home/*/.cache/ibus/dbus-????????',      'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(7, 8), 'user'], [(26, 34), 'qGivRGmK']], 'path_prefix': 'owner'}),  # not actually 'path', but 'addr'
 (   {'path': '@/tmp/dbus-IgfNnTvp',                     'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
     {'path': '@/tmp/dbus-????????',                     'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(11, 19), 'IgfNnTvp']], 'path_prefix': 'owner'}),
-    # Already substituted (traps)
-(   {'path': '/var/lib/apt/lists/*.yml.gz',             'operation': {'open'}, 'path_diffs': [[(19, 20), 'ie.archive.ubuntu.com_ubuntu_dists_jammy_main_dep11_Components-amd64']]},
-    {'path': '/var/lib/apt/lists/*.yml.gz',             'operation': {'open'}, 'path_diffs': [[(19, 20), 'ie.archive.ubuntu.com_ubuntu_dists_jammy_main_dep11_Components-amd64']]}),
-(   {'path': '/{,usr/}bin/{,e,f}grep',                  'operation': {'open'}, 'path_diffs': [[(1, 8), ''],     [(12, 18), '']]},
-    {'path': '/{,usr/}bin/{,e,f}grep',                  'operation': {'open'}, 'path_diffs': [[(1, 8), ''],     [(12, 18), '']]}),
+    # Other traps
+(   {'path': '/lib/d/aarch64-linux-musl/',              'operation': {'open'}},
+    {'path': '/{,usr/}lib/d/aarch64-linux-musl/',       'operation': {'open'}, 'path_diffs': [[(1, 8), '']]}),
+(   {'path': '/usr/lib/d/x86_64-linux-gnu/',            'operation': {'open'}},
+    {'path': '/{,usr/}lib/d/x86_64-linux-gnu/',         'operation': {'open'}, 'path_diffs': [[(1, 8), 'usr/']]}),
+    # Nothing to adapt
+(   {'path': '/tmp/abc',                                'operation': {'open'}},
+    {'path': '/tmp/abc',                                'operation': {'open'}}),
         )
         for i,r in filePaths_default:
             self.assertEqual(adaptFilePath(i, 'path', 'default'), r)
@@ -500,26 +588,44 @@ class regexTests(unittest.TestCase):
     {'path': '@{bin}/{,g,m}awk',                        'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/bin'], [(7, 13), 'm']]}),
 (   {'path': '/bin/python3.10',                         'operation': {'open'}},
     {'path': '@{bin}/python3.@{int}',                   'operation': {'open'}, 'path_diffs': [[(0, 6), '/bin'],     [(15, 21), '10']]}),
+(   {'path': '/lib/python3.10/',                        'operation': {'open'}},
+    {'path': '@{lib}/python3.@{int}/',                  'operation': {'open'}, 'path_diffs': [[(0, 6), '/lib'],     [(15, 21), '10']]}),
+(   {'path': '/usr/lib/python3.10/',                    'operation': {'open'}},
+    {'path': '@{lib}/python3.@{int}/',                  'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib'], [(15, 21), '10']]}),
+(   {'path': '/usr/local/lib/python3.10/',              'operation': {'open'}},
+    {'path': '/usr/local/lib/python3.@{int}/',          'operation': {'open'}, 'path_diffs': [[(23, 29), '10']]}),
 (   {'path': '/home/user/.config/ibus/bus/e561af98c3584a29a4eab8a761aceaf8-', 'operation': {'open'}},
-    {'path': '@{user_config_dirs}/ibus/bus/@{md5}-', 'operation': {'open'}, 'path_diffs': [[(0, 19), '/home/user/.config'], [(29, 35), 'e561af98c3584a29a4eab8a761aceaf8']], 'path_prefix': 'owner'}),
+    {'path': '@{user_config_dirs}/ibus/bus/@{hex32}-',    'operation': {'open'}, 'path_diffs': [[(0, 19), '/home/user/.config'], [(29, 37), 'e561af98c3584a29a4eab8a761aceaf8']], 'path_prefix': 'owner'}),
 (   {'path': '/var/lib/apt/lists/ie.archive.ubuntu.com_ubuntu_dists_jammy_main_dep11_Components-amd64.yml.gz', 'operation': {'open'}},
     {'path': '/var/lib/apt/lists/*.yml.gz',             'operation': {'open'}, 'path_diffs': [[(19, 20), 'ie.archive.ubuntu.com_ubuntu_dists_jammy_main_dep11_Components-amd64']]}),
 (   {'path': '/home/user/.local/share/gvfs-metadata/root', 'operation': {'open'}},
     {'path': '@{user_share_dirs}/gvfs-metadata/{,*}',   'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.local/share'], [(33, 37), 'root']], 'path_prefix': 'deny'}),
+(   {'path': '/home/user/.local/share/gvfs-metadata/',  'operation': {'open'}},
+    {'path': '@{user_share_dirs}/gvfs-metadata/{,*}',   'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.local/share'], [(33, 37), '']], 'path_prefix': 'deny'}),
 (   {'path': '/home/user/.local/share/kcookiejar/cookies.aBcXy9', 'operation': {'open'}},
     {'path': '@{user_share_dirs}/kcookiejar/cookies.@{rand6}',    'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.local/share'], [(38, 46), 'aBcXy9']], 'path_prefix': 'owner'}),
 (   {'path': '/var/log/journal/e561af98c3584a29a4eab8a761aceaf8/system@84dc5cc7a30f49d19b1412b97218d200-00000000001e258e-0006093052d8dbd6.journal', 'operation': {'open'}},
-    {'path': '/var/log/journal/@{md5}/system@@{md5}-*.journal',   'operation': {'open'}, 'path_diffs': [[(17, 23), 'e561af98c3584a29a4eab8a761aceaf8'], [(31, 37), '84dc5cc7a30f49d19b1412b97218d200'], [(38, 39), '00000000001e258e-0006093052d8dbd6']]}),
+    {'path': '/var/log/journal/@{hex32}/system@@{hex32}-*.journal',   'operation': {'open'}, 'path_diffs': [[(17, 25), 'e561af98c3584a29a4eab8a761aceaf8'], [(33, 41), '84dc5cc7a30f49d19b1412b97218d200'], [(42, 43), '00000000001e258e-0006093052d8dbd6']]}),
+(   {'path': '/var/log/journal/e561af98c3584a29a4eab8a761aceaf8/system@00000000001e258e-0006093052d8dbd6.journal', 'operation': {'open'}},
+    {'path': '/var/log/journal/@{hex32}/system@*.journal', 'operation': {'open'}, 'path_diffs': [[(17, 25), 'e561af98c3584a29a4eab8a761aceaf8'], [(33, 34), '00000000001e258e-0006093052d8dbd6']]}),
 (   {'path': '/tmp/systemd-private-779146be998c4b178253781e20277618-systemd-logind.service-h5Ctde/', 'operation': {'open'}},
-    {'path': '/tmp/systemd-private-@{md5}-systemd-logind.service-@{rand6}/', 'operation': {'open'}, 'path_diffs': [[(21, 27), '779146be998c4b178253781e20277618'], [(51, 59), 'h5Ctde']], 'path_prefix': 'owner'}),
+    {'path': '/tmp/systemd-private-@{hex32}-systemd-logind.service-@{rand6}/', 'operation': {'open'}, 'path_diffs': [[(21, 29), '779146be998c4b178253781e20277618'], [(53, 61), 'h5Ctde']], 'path_prefix': 'owner'}),
+(   {'path': '/home/user/.cache/fontconfig/807752c9e168308eb5108dacded5237a-le64.cache-7', 'operation': {'open'}},
+    {'path': '@{user_cache_dirs}/fontconfig/@{hex32}-le64.cache-7', 'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.cache'], [(30, 38), '807752c9e168308eb5108dacded5237a']], 'path_prefix': 'owner'}),
+(   {'path': '/var/cache/fontconfig/807752c9e168308eb5108dacded5237a-le64.cache-7', 'operation': {'open'}},
+    {'path': '/var/cache/fontconfig/@{hex32}-le64.cache-7', 'operation': {'open'}, 'path_diffs': [[(22, 30), '807752c9e168308eb5108dacded5237a']], 'path_prefix': 'owner'}),
 (   {'path': '/home/user/.cache/fontconfig/807752c9e168308eb5108dacded5237a-le64.cache-7.TMP-Ke7L9W', 'operation': {'open'}},
-    {'path': '@{user_cache_dirs}/fontconfig/@{md5}-le64.cache-7.TMP-@{rand6}', 'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.cache'], [(30, 36), '807752c9e168308eb5108dacded5237a'], [(54, 62), 'Ke7L9W']], 'path_prefix': 'owner'}),
+    {'path': '@{user_cache_dirs}/fontconfig/@{hex32}-le64.cache-7.TMP-@{rand6}', 'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.cache'], [(30, 38), '807752c9e168308eb5108dacded5237a'], [(56, 64), 'Ke7L9W']], 'path_prefix': 'owner'}),
 (   {'path': '/proc/3003/fdinfo/8',                     'operation': {'open'}},
     {'path': '@{PROC}/@{pid}/fdinfo/@{int}',            'operation': {'open'}, 'path_diffs': [[(0, 7), '/proc'], [(8, 14), '3003'], [(22, 28), '8']], 'path_prefix': 'owner'}),
 (   {'path': '/run/user/1000/wayland-0',                'operation': {'open'}},
     {'path': '@{run}/user/@{uid}/wayland-@{int}',       'operation': {'open'}, 'path_diffs': [[(0, 6), '/run'], [(12, 18), '1000'], [(27, 33), '0']], 'path_prefix': 'owner'}),
 (   {'path': '/lib/',                                   'operation': {'open'}},
     {'path': '@{lib}/',                                 'operation': {'open'}, 'path_diffs': [[(0, 6), '/lib']]}),
+(   {'path': '/usr/lib32/',                             'operation': {'open'}},
+    {'path': '@{lib}/',                                 'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib32']]}),
+(   {'path': '/usr/lib64/',                             'operation': {'open'}},
+    {'path': '@{lib}/',                                 'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib64']]}),
 (   {'path': '/usr/lib/',                               'operation': {'open'}},
     {'path': '@{lib}/',                                 'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib']]}),
 (   {'path': '/usr/libexec/',                           'operation': {'open'}},
@@ -531,24 +637,45 @@ class regexTests(unittest.TestCase):
 (   {'path': '/run/netns/cni-e4b9714f-cbf5-45a8-9fbf-3ac3b47fd809', 'operation': {'open'}},
     {'path': '@{run}/netns/cni-@{uuid}',                'operation': {'open'}, 'path_diffs': [[(0, 6), '/run'], [(17, 24), 'e4b9714f-cbf5-45a8-9fbf-3ac3b47fd809']]}),
 (   {'path': '/home/user/.cache/thumbnails/fail/gnome-thumbnail-factory/d7d9f01923147d3126f4d8dc459a958f.png', 'operation': {'open'}},
-    {'path': '@{user_cache_dirs}/thumbnails/fail/gnome-thumbnail-factory/@{md5}.png', 'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.cache'], [(59, 65), 'd7d9f01923147d3126f4d8dc459a958f']], 'path_prefix': 'owner'}),
+    {'path': '@{user_cache_dirs}/thumbnails/fail/gnome-thumbnail-factory/@{hex32}.png', 'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.cache'], [(59, 67), 'd7d9f01923147d3126f4d8dc459a958f']], 'path_prefix': 'owner'}),
 (   {'path': '/home/user/xauth_aBcXy9',                 'operation': {'open'}},
     {'path': '@{HOME}/xauth_@{rand6}',                  'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(14, 22), 'aBcXy9']], 'path_prefix': 'owner'}),
+(   {'path': '/tmp/Mozillac843286e-fb29-4915-aa17-db3a6df86497-',            'operation': {'open'}},
+    {'path': '/tmp/Mozilla@{uuid}-',                    'operation': {'open'}, 'path_diffs': [[(12, 19), 'c843286e-fb29-4915-aa17-db3a6df86497']], 'path_prefix': 'owner'}),
+(   {'path': '/tmp/Mozilla{c843286e-fb29-4915-aa17-db3a6df86497}-',            'operation': {'open'}},
+    {'path': '/tmp/Mozilla\{@{uuid}\}-',                  'operation': {'open'}, 'path_diffs': [[(12, 13), ''], [(14, 21), 'c843286e-fb29-4915-aa17-db3a6df86497'], [(21, 22), '']], 'path_prefix': 'owner'}),
+(   {'path': '/var/lib/gdm/.cache/mesa_shader_cache/5b/630568b4dc7a281bca68647783eb1b338fd9ce', 'operation': {'open'}},
+    {'path': '/var/lib/gdm{,3}/.cache/mesa_shader_cache/@{h}@{h}/@{hex}', 'operation': {'open'}, 'path_diffs': [[(12, 16), ''], [(42, 50), '5b'],[(51, 57), '630568b4dc7a281bca68647783eb1b338fd9ce']]}),
+(   {'path': '/usr/lib/kde/',                           'operation': {'open'}},
+    {'path': '@{lib}/kde{,3,4}/',                       'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib'], [(10, 16), '']]}),
+(   {'path': '/lib/kde4/',                              'operation': {'open'}},
+    {'path': '@{lib}/kde{,3,4}/',                       'operation': {'open'}, 'path_diffs': [[(0, 6), '/lib'], [(10, 16), '4']]}),
+(   {'path': '/lib/aarch64-linux-musl/',                'operation': {'open'}},
+    {'path': '@{lib}/@{multiarch}/',                    'operation': {'open'}, 'path_diffs': [[(0, 6), '/lib'], [(7, 19), 'aarch64-linux-musl']]}),
+(   {'path': '/usr/lib/x86_64-linux-gnu/',              'operation': {'open'}},
+    {'path': '@{lib}/@{multiarch}/',                    'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib'], [(7, 19), 'x86_64-linux-gnu']]}),
+(   {'path': '/usr/lib/arm-linux-gnueabihf/',           'operation': {'open'}},
+    {'path': '@{lib}/@{multiarch}/',                    'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib'], [(7, 19), 'arm-linux-gnueabihf']]}),
+(   {'path': '/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.', 'operation': {'open'}},
+    {'path': '@{sys}/fs/cgroup/user.slice/user-@{uid}.slice/user@@{uid}.', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(33, 39), '1000'], [(51, 57), '1000']]}),
+
+(   {'path': '/sys/devices/pci0000:00/0000:00:1f.3/drm/card1/metrics/e12693c1-5c3d-4fe4-8fc2-6c3ae26b04d3/',           'operation': {'open'}},
+    {'path': '@{sys}/devices/@{pci_bus}/@{pci_id}/drm/card@{int}/metrics/@{uuid}/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(15, 25), 'pci0000:00'], [(26, 35), '0000:00:1f.3'], [(44, 50), '1'], [(59, 66), 'e12693c1-5c3d-4fe4-8fc2-6c3ae26b04d3']]}),
+(   {'path': '/sys/devices/pci0000:00/0000:00:1f.3/0000:00:00.2/', 'operation': {'open'}},
+    {'path': '@{sys}/devices/@{pci_bus}/@{pci_id}/@{pci_id}/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(15, 25), 'pci0000:00'], [(26, 35), '0000:00:1f.3'], [(36, 45), '0000:00:00.2']]}),
     # UNIX sockets
 (   {'path': '@/home/user/.cache/ibus/dbus-qGivRGmK',   'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
     {'path': '@/home/*/.cache/ibus/dbus-????????',      'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(7, 8), 'user'], [(26, 34), 'qGivRGmK']], 'path_prefix': 'owner'}),
 (   {'path': '@/tmp/dbus-IgfNnTvp',                     'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
     {'path': '@/tmp/dbus-????????',                     'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(11, 19), 'IgfNnTvp']], 'path_prefix': 'owner'}),
-    # Already substituted (traps)
-(   {'path': '/var/lib/apt/lists/*.yml.gz',             'operation': {'open'}, 'path_diffs': [[(19, 20), 'ie.archive.ubuntu.com_ubuntu_dists_jammy_main_dep11_Components-amd64']]},
-    {'path': '/var/lib/apt/lists/*.yml.gz',             'operation': {'open'}, 'path_diffs': [[(19, 20), 'ie.archive.ubuntu.com_ubuntu_dists_jammy_main_dep11_Components-amd64']]}),
-(   {'path': '@{user_share_dirs}/gvfs-metadata/{,*}',   'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.local/share'], [(33, 37), 'root']], 'path_prefix': 'deny'},
-    {'path': '@{user_share_dirs}/gvfs-metadata/{,*}',   'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.local/share'], [(33, 37), 'root']], 'path_prefix': 'deny'}),
-(   {'path': '@{bin}/{,e,f}grep',                       'operation': {'open'}, 'path_diffs': [[(0, 6), '/bin'],     [(7, 13), '']]},
-    {'path': '@{bin}/{,e,f}grep',                       'operation': {'open'}, 'path_diffs': [[(0, 6), '/bin'],     [(7, 13), '']]}),
+    # Other traps
+(   {'path': '/lib/d/aarch64-linux-musl/',              'operation': {'open'}},
+    {'path': '@{lib}/d/aarch64-linux-musl/',            'operation': {'open'}, 'path_diffs': [[(0, 6), '/lib']]}),
+(   {'path': '/usr/lib/d/x86_64-linux-gnu/',            'operation': {'open'}},
+    {'path': '@{lib}/d/x86_64-linux-gnu/',              'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib']]}),
         )
         for i,r in filePaths_apparmor_d:
-            self.assertEqual(adaptFilePath(i, 'path', 'roddhjav/apparmor.d'), r)
+            self.assertEqual(adaptFilePath(i, 'path', 'AppArmor.d'), r)
 
     def test_adaptDbusPaths(self):
         '''Full-cycle substitutions, for multiple lines'''
@@ -584,9 +711,17 @@ class regexTests(unittest.TestCase):
     {'synth': [{'path': '/org/gnome/evolution/dataserver/AddressBookView/[0-9]*/[0-9]*', 'operation': {'dbus_method_call'}, 'path_diffs': [[(48, 54), '2782'], [(55, 61), '2']]}]} ),
 (   {'synth': [{'path': '/org/freedesktop/Accounts/User@{uid}',                          'operation': {'dbus_method_call'}, 'path_diffs': [[(30, 36), '1000']]}]},
     {'synth': [{'path': '/org/freedesktop/Accounts/User@{uid}',                          'operation': {'dbus_method_call'}, 'path_diffs': [[(30, 36), '1000']]}]} ),
+    # Nothing to adapt
+(   {'synth': [{'path': '/org/Synth/abc',                                                'operation': {'dbus_method_call'}}]},
+    {'synth': [{'path': '/org/Synth/abc',                                                'operation': {'dbus_method_call'}}]} ),
+(   {'synth': [{'nonmatching': '/org/keepme',                                            'operation': {'dbus_method_call'}}]},
+    {'synth': [{'nonmatching': '/org/keepme',                                            'operation': {'dbus_method_call'}}]} ),
         )
         for i,r in dbusPaths_default:
             self.assertEqual(adaptDbusPaths(i, 'default'), r)
+
+        assertion1 = {'synth': [{'path': '/tmp/f', 'operation': {'open'}}]}
+        self.assertRaises(ValueError, adaptDbusPaths, assertion1, 'default')
 
         dbusPaths_apparmor_d = (
 (   {'synth': [{'path': '/org/gnome/evolution/dataserver/AddressBookView/2782',          'operation': {'dbus_method_call'}}]},
@@ -605,7 +740,7 @@ class regexTests(unittest.TestCase):
     {'synth': [{'path': '/Client@{int}/ServiceBrowser@{int}',                            'operation': {'dbus_signal'},      'path_diffs': [[(7, 13), '12'], [(28, 34), '2']]}]} ),
         )
         for i,r in dbusPaths_apparmor_d:
-            self.assertEqual(adaptDbusPaths(i, 'roddhjav/apparmor.d'), r)
+            self.assertEqual(adaptDbusPaths(i, 'AppArmor.d'), r)
 
     def test_substituteGroup(self):
         self.assertEqual(substituteGroup('one_two_three', '2',      '_(two)_'),
@@ -616,15 +751,16 @@ class regexTests(unittest.TestCase):
                                         ('/etc/gdm{,3}/', (8, 12),  ''))
         self.assertEqual(substituteGroup('/etc/gdm3/',   '{,3}',    '^/etc/gdm(|3)/'),
                                         ('/etc/gdm{,3}/', (8, 12),  '3'))
-        #self.assertEqual(substituteGroup('one_two_three', '10', '(one)_(two)_'), ('', '', '')) # exception; TODO
-        #self.assertEqual(substituteGroup('one_two_three', '10', '_two_'), ('', '', ''))        # exception; TODO
+        self.assertRaises(ValueError,          substituteGroup, 'one_two_three', '10', '_t.._')
+        self.assertRaises(NotImplementedError, substituteGroup, 'one_two_three', '10', '(one)_(two)_')
+        self.assertRaises(ValueError,          substituteGroup, 'one_two_three', 'owner', '_t.._')
 
 class t_findLineType(unittest.TestCase):
 
     def setUp(self):
         self.maxDiff = None
 
-#{'comm': 'dumpcap', 'path': '/run/dbus/system_bus_socket', 'timestamp': 223, 'operation': {'connect', 'file_perm'}, 'mask': {'r', 'w'}}
+#{'comm': 'dumpcap', 'path': '/run/dbus/system_bus_socket', 'timestamp': 223, 'operation': {'connect', 'file_perm'}, 'mask': {'r', 'w'}}  TODO
 
 class t_normalizeProfileName(unittest.TestCase):
 
@@ -786,45 +922,45 @@ class t_adaptTempPaths_pairs(unittest.TestCase):
  ]}),
         )
         for inpt,result in fileLines_pairs:
-            self.assertEqual(adaptTempPaths(inpt, 'roddhjav/apparmor.d'), result)
+            self.assertEqual(adaptTempPaths(inpt, 'AppArmor.d'), result)
 
 class primaryFlow(unittest.TestCase):
 
     def setUp(self):
         self.maxDiff = None
         self.logLines_duplicated_unnormalized_ungrouped = [
-{'operation': 'rename_dest',  'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 139}, # write base
-{'operation': 'rename_dest',  'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 140}, # exact duplicate
-{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 141}, # readonly base
-{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 142}, # exact duplicate
+{'operation': 'rename_dest',  'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 139},  # write base
+{'operation': 'rename_dest',  'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 140},  # exact duplicate
+{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 141},  # readonly base
+{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 142},  # exact duplicate
 {'operation': 'mknod',        'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'c',   'path': '/tmp/f.txt.V6RK41', 'timestamp': 143},
 {'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wrc', 'path': '/tmp/f.txt.V6RK41', 'timestamp': 144},
-{'operation': 'rename_src',   'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wrd', 'path': '/tmp/f.txt.V6RK41', 'timestamp': 145}, # write tails
-{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wrc', 'path': '/tmp/f.txt.K4TK9Q', 'timestamp': 146}, # second pair
-{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt.ROTAIL', 'timestamp': 147}, # readonly pair
+{'operation': 'rename_src',   'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wrd', 'path': '/tmp/f.txt.V6RK41', 'timestamp': 145},  # write tails
+{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'wrc', 'path': '/tmp/f.txt.K4TK9Q', 'timestamp': 146},  # second pair
+{'operation': 'open',         'profile': 'tracker-miner', 'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt.ROTAIL', 'timestamp': 147},  # readonly pair
 {'operation': 'unlink',       'profile': 'firefox',       'comm': 'firefox-bin',     'requested_mask': 'd',   'path': '/dev/char/195:255', 'timestamp': 170},
 {'operation': 'dbus_signal',      'profile': 'tracker-miner',   'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'VolumeAdded',   'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 250},
 {'operation': 'dbus_signal',      'profile': 'tracker-miner',   'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'VolumeChanged', 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 251},
 {'operation': 'dbus_signal',      'profile': 'tracker-miner',   'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'VolumeRemoved', 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 252},
 {'operation': 'dbus_method_call', 'profile': 'tracker-extract', 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'IsSupported',   'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 260},
 {'operation': 'dbus_method_call', 'profile': 'tracker-extract', 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'List',          'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 261},
-{'operation': 'dbus_method_call', 'profile': 'tracker-extract', 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'List',          'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 262}, # exact duplicate
+{'operation': 'dbus_method_call', 'profile': 'tracker-extract', 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'List',          'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 262},  # exact duplicate
 {'operation': 'file_receive', 'profile': 'firefox', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 350},
 {'operation': 'file_receive', 'profile': 'vlc',     'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 360},
-{'operation': 'file_receive', 'profile': 'vlc',     'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 361}, # exact duplicate
+{'operation': 'file_receive', 'profile': 'vlc',     'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 361},  # exact duplicate
         ]
 
         self.allLines_duplicated_unnormalized_profiled = {
     'tracker-miner': [
-{'operation': 'rename_dest', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 139}, # write base
-{'operation': 'rename_dest', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 140}, # exact duplicate
-{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 141}, # readonly base
-{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 142}, # exact duplicate
+{'operation': 'rename_dest', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 139},  # write base
+{'operation': 'rename_dest', 'comm': 'tracker-miner-f', 'requested_mask': 'wc',  'path': '/tmp/f.txt',        'timestamp': 140},  # exact duplicate
+{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 141},  # readonly base
+{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt',        'timestamp': 142},  # exact duplicate
 {'operation': 'mknod',       'comm': 'tracker-miner-f', 'requested_mask': 'c',   'path': '/tmp/f.txt.V6RK41', 'timestamp': 143},
 {'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'wrc', 'path': '/tmp/f.txt.V6RK41', 'timestamp': 144},
-{'operation': 'rename_src',  'comm': 'tracker-miner-f', 'requested_mask': 'wrd', 'path': '/tmp/f.txt.V6RK41', 'timestamp': 145}, # write tails
-{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'wrc', 'path': '/tmp/f.txt.K4TK9Q', 'timestamp': 146}, # second pair
-{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt.ROTAIL', 'timestamp': 147}, # readonly pair
+{'operation': 'rename_src',  'comm': 'tracker-miner-f', 'requested_mask': 'wrd', 'path': '/tmp/f.txt.V6RK41', 'timestamp': 145},  # write tails
+{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'wrc', 'path': '/tmp/f.txt.K4TK9Q', 'timestamp': 146},  # second pair
+{'operation': 'open',        'comm': 'tracker-miner-f', 'requested_mask': 'r',   'path': '/tmp/f.txt.ROTAIL', 'timestamp': 147},  # readonly pair
 {'operation': 'dbus_signal',      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'VolumeAdded',   'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 250},
 {'operation': 'dbus_signal',      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'VolumeChanged', 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 251},
 {'operation': 'dbus_signal',      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'VolumeRemoved', 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 252},
@@ -840,20 +976,20 @@ class primaryFlow(unittest.TestCase):
         ],
     'vlc': [
 {'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 360},
-{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 361}, # exact duplicate
+{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 361},  # exact duplicate
         ]}
 
         self.fileLines_duplicated_halfnormalized = {
     'tracker-miner': [
-{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt',        'timestamp': 139}, # write base
-{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt',        'timestamp': 140}, # exact duplicate
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt',        'timestamp': 141}, # readonly base
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt',        'timestamp': 142}, # exact duplicate
+{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt',        'timestamp': 139},  # write base
+{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt',        'timestamp': 140},  # exact duplicate
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt',        'timestamp': 141},  # readonly base
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt',        'timestamp': 142},  # exact duplicate
 {'operation': {'mknod'},       'comm': 'tracker-miner-f', 'mask': {'c'},           'path': '/tmp/f.txt.V6RK41', 'timestamp': 143},
 {'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'c'}, 'path': '/tmp/f.txt.V6RK41', 'timestamp': 144},
-{'operation': {'rename_src'},  'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'd'}, 'path': '/tmp/f.txt.V6RK41', 'timestamp': 145}, # write tails
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'c'}, 'path': '/tmp/f.txt.K4TK9Q', 'timestamp': 146}, # second pair
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt.ROTAIL', 'timestamp': 147}, # readonly pair
+{'operation': {'rename_src'},  'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'd'}, 'path': '/tmp/f.txt.V6RK41', 'timestamp': 145},  # write tails
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'c'}, 'path': '/tmp/f.txt.K4TK9Q', 'timestamp': 146},  # second pair
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt.ROTAIL', 'timestamp': 147},  # readonly pair
         ],
     'firefox': [
 {'operation': {'unlink'},      'comm': 'firefox-bin',     'mask': {'d'},           'path': '/dev/char/195:255', 'timestamp': 170}  # kept
@@ -861,15 +997,15 @@ class primaryFlow(unittest.TestCase):
 
         self.fileLines_duplicated_tempnormalized = {
     'tracker-miner': [
-{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 139, 'path_diffs': [[(10, 20), '']]}, # write base
-{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 140, 'path_diffs': [[(10, 20), '']]}, # exact duplicate
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'c', 'r', 'w'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 141, 'path_diffs': [[(10, 20), '']]}, # normalized mask
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'c', 'r', 'w'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 142, 'path_diffs': [[(10, 20), '']]}, # normalized mask
+{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 139, 'path_diffs': [[(10, 20), '']]},  # write base
+{'operation': {'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 140, 'path_diffs': [[(10, 20), '']]},  # exact duplicate
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'c', 'r', 'w'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 141, 'path_diffs': [[(10, 20), '']]},  # normalized mask
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'c', 'r', 'w'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 142, 'path_diffs': [[(10, 20), '']]},  # normalized mask
 {'operation': {'mknod'},       'comm': 'tracker-miner-f', 'mask': {'c'},           'path': '/tmp/f.txt{,.??????}', 'timestamp': 143, 'path_diffs': [[(10, 20), '.V6RK41']]},
 {'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'c'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 144, 'path_diffs': [[(10, 20), '.V6RK41']]},
-{'operation': {'rename_src'},  'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'd'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 145, 'path_diffs': [[(10, 20), '.V6RK41']]}, # write tails
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'c'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 146, 'path_diffs': [[(10, 20), '.K4TK9Q']]}, # second pair
-{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt.ROTAIL',    'timestamp': 147}, # readonly pair
+{'operation': {'rename_src'},  'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'd'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 145, 'path_diffs': [[(10, 20), '.V6RK41']]},  # write tails
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'w', 'r', 'c'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 146, 'path_diffs': [[(10, 20), '.K4TK9Q']]},  # second pair
+{'operation': {'open'},        'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt.ROTAIL',    'timestamp': 147},  # readonly pair
         ],
     'firefox': [
 {'operation': {'unlink'},      'comm': 'firefox-bin',     'mask': {'d'},           'path': '/dev/char/195:255', 'timestamp': 170}  # kept
@@ -877,46 +1013,28 @@ class primaryFlow(unittest.TestCase):
 
         self.fileLines_masksAndOpers_merged = {
     'tracker-miner': [
-{'operation': {'open', 'rename_dest'},         'comm': 'tracker-miner-f', 'mask': {'w', 'c', 'r'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 142, 'path_diffs': [[(10, 20), '']]}, # merged empty diffs
-{'operation': {'open', 'mknod', 'rename_src'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c', 'r', 'd'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 145, 'path_diffs': [[(10, 20), '.V6RK41']]}, # merged first diff
-{'operation': {'open'},                        'comm': 'tracker-miner-f', 'mask': {'w', 'c', 'r'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 146, 'path_diffs': [[(10, 20), '.K4TK9Q']]}, # merged second diff
-{'operation': {'open'},                        'comm': 'tracker-miner-f', 'mask': {'r'},                'path': '/tmp/f.txt.ROTAIL',    'timestamp': 147}, # readonly pair - NOT a temp tail
+{'operation': {'open', 'rename_dest'},         'comm': 'tracker-miner-f', 'mask': {'w', 'c', 'r'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 142, 'path_diffs': [[(10, 20), '']]},  # merged empty diffs
+{'operation': {'open', 'mknod', 'rename_src'}, 'comm': 'tracker-miner-f', 'mask': {'w', 'c', 'r', 'd'}, 'path': '/tmp/f.txt{,.??????}', 'timestamp': 145, 'path_diffs': [[(10, 20), '.V6RK41']]},  # merged first diff
+{'operation': {'open'},                        'comm': 'tracker-miner-f', 'mask': {'w', 'c', 'r'},      'path': '/tmp/f.txt{,.??????}', 'timestamp': 146, 'path_diffs': [[(10, 20), '.K4TK9Q']]},  # merged second diff
+{'operation': {'open'},                        'comm': 'tracker-miner-f', 'mask': {'r'},                'path': '/tmp/f.txt.ROTAIL',    'timestamp': 147},  # readonly pair - NOT a temp tail
         ],
     'firefox': [
 {'operation': {'unlink'},      'comm': 'firefox-bin',     'mask': {'d'},           'path': '/dev/char/195:255', 'timestamp': 170},  # kept
         ]}
 
-        self.fileLines_tempDiffs_merged = {}
-
-        self.dbusLines_duplicated_halfnormalized = {
-    'tracker-miner': [
-{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeAdded'},   'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 250},
-{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeChanged'}, 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 251},
-{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeRemoved'}, 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 252},
-    ],
-    'tracker-extract': [
-{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'IsSupported'},   'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 260},
-{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'List'},          'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 261},
-{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'List'},          'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 262},  # exact duplicate
-    ]}
-        self.dbusLines_members_merged = {
-    'tracker-miner': [
-{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeAdded', 'VolumeChanged', 'VolumeRemoved'}, 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 252},],
-    'tracker-extract': [
-{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'IsSupported', 'List'},                           'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 262},
-    ]}
-        self.otherLines_duplicated_halfnormalized = {
-    'firefox': [
-{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 350},],
-    'vlc': [
-{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 360},
-{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 361}]}  # exact duplicate
+#        self.otherLines_duplicated_halfnormalized = {
+#    'firefox': [
+#{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 350},],
+#    'vlc': [
+#{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 360},
+#{'operation': 'file_receive', 'comm': 'Xorg', 'family': 'unix', 'sock_type': 'stream', 'protocol': '0', 'requested_mask': 'send receive', 'addr': 'none', 'peer_addr': 'none', 'peer': 'xorg', 'timestamp': 361},
+#    ]}  # exact duplicate
 
     def test_groupLinesByProfile(self):
         self.assertEqual(groupLinesByProfile(self.logLines_duplicated_unnormalized_ungrouped), self.allLines_duplicated_unnormalized_profiled)
 
-#    def test_normalizeAndSplit(self):
-#        self.assertEqual(normalizeAndSplit(self.allLines_duplicated_unnormalized_profiled),
+#    def test_normalizeAndGroup(self):
+#        self.assertEqual(normalizeAndGroup(self.allLines_duplicated_unnormalized_profiled),
 #                                          (self.fileLines_duplicated_halfnormalized,
 #                                           self.dbusLines_duplicated_halfnormalized,
 #                                           self.otherLines_duplicated_halfnormalized))
@@ -924,16 +1042,90 @@ class primaryFlow(unittest.TestCase):
     def test_adaptTempPaths(self):
         self.assertEqual(adaptTempPaths(self.fileLines_duplicated_halfnormalized, 'default'), self.fileLines_duplicated_tempnormalized)
 
-    def test_mergeDictsBySingleKey(self):
-        self.assertEqual(mergeDictsBySingleKey(self.dbusLines_duplicated_halfnormalized, 'member'), self.dbusLines_members_merged)
-
-    def test_mergeDictsByKeyPair(self):
+    def test_mergeDictsByKeyPair_tempTails(self):
         self.assertEqual(mergeDictsByKeyPair(self.fileLines_duplicated_tempnormalized, 'mask', 'operation'), self.fileLines_masksAndOpers_merged)
+        non_normalizedPair = {
+    'firefox': [
+{'operation': 'unlink', 'comm': 'firefox-bin', 'mask': 'd', 'path': '/dev/char/195:255', 'timestamp': 170}
+    ]}
+        self.assertRaises(NotImplementedError, mergeDictsByKeyPair, non_normalizedPair, 'mask', 'operation')
 
 class mergeTests(unittest.TestCase):
 
     def setUp(self):
         self.maxDiff = None
+
+    def test_mergeDictsBySingleKey(self):
+        dbusLines_duplicated = {
+    'tracker-miner': [
+{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeAdded'},   'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 250},
+{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeChanged'}, 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 251},
+{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeRemoved'}, 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 252},
+{'bus': 'session', 'name': 'org.gnome.ArchiveManager1', 'mask': 'bind', 'timestamp': 350, 'operation': {'dbus_bind'}},
+    ],
+    'tracker-extract': [
+{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'IsSupported'},   'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 260},
+{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'List'},          'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 261},
+{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'List'},          'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 262},  # exact duplicate
+    ]}
+        dbusLines_merged = {
+    'tracker-miner': [
+{'bus': 'session', 'name': 'org.gnome.ArchiveManager1', 'mask': 'bind', 'timestamp': 350, 'operation': {'dbus_bind'}},  # preserve unaffected
+{'operation': {'dbus_signal'},      'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'VolumeAdded', 'VolumeChanged', 'VolumeRemoved'}, 'name': ':[0-9]*', 'mask': 'receive', 'peer': 'unconfined', 'timestamp': 252},
+    ],
+    'tracker-extract': [
+{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': {'IsSupported', 'List'},                           'name': ':[0-9]*', 'mask': 'send',    'peer': 'unconfined', 'timestamp': 262},
+    ]}
+        self.assertEqual(mergeDictsBySingleKey(dbusLines_duplicated, 'member'), dbusLines_merged)
+
+        non_normalizedSingle = {
+    'tracker-extract': [
+{'operation': {'dbus_method_call'}, 'bus': 'session', 'path': '/org/gtk/Private/RemoteVolumeMonitor', 'interface': 'org.gtk.Private.RemoteVolumeMonitor', 'member': 'IsSupported', 'name': ':[0-9]*', 'mask': 'send', 'peer': 'unconfined', 'timestamp': 262},
+    ]}
+        self.assertRaises(NotImplementedError, mergeDictsBySingleKey, non_normalizedSingle, 'member')
+
+        signals_input1   = {'update-manager': [
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'int'},         'peer': 'apt-methods-http', 'timestamp': 101},
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'term'},        'peer': 'apt-methods-http', 'timestamp': 102},
+{'requested_mask': 'receive', 'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'hup'},         'peer': 'apt-methods-http', 'timestamp': 103},
+{'requested_mask': 'send',    'comm': {'synth'},          'operation': {'signal'}, 'signal': {'int'},         'peer': 'synth',            'timestamp': 104},
+{'requested_mask': 'send',    'comm': {'synth'},          'operation': {'signal'}, 'signal': {'term'},        'peer': 'synth',            'timestamp': 105},
+{'requested_mask': 'send',    'comm': {'synth'},          'operation': {'signal'}, 'signal': {'hup'},         'peer': 'synth',            'timestamp': 106},
+  ],              'synth': [
+{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'}, 'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 107},
+  ]}
+        signals_result1 = {'update-manager': [
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'int', 'term'}, 'peer': 'apt-methods-http', 'timestamp': 102},
+{'requested_mask': 'receive', 'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'hup'},         'peer': 'apt-methods-http', 'timestamp': 103},  # preserve unaffected
+{'requested_mask': 'send',    'comm': {'synth'},          'operation': {'signal'}, 'signal': {'int', 'term', 'hup'}, 'peer': 'synth',     'timestamp': 106},
+  ],              'synth': [
+{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'}, 'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 107},  # preserve unaffected
+  ]}
+        self.assertEqual(mergeDictsBySingleKey(signals_input1, 'signal'), signals_result1)
+
+        signals_input2   = {'update-manager': [
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'int'},         'peer': 'apt-methods-http', 'timestamp': 101},
+  ]}
+        signals_result2 = {'update-manager': [
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'int'},         'peer': 'apt-methods-http', 'timestamp': 101},
+  ]}
+        self.assertEqual(mergeDictsBySingleKey(signals_input2, 'signal'), signals_result2)  # not affected
+
+        file_inherit_input1   = {'update-manager': [
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'},       'signal': {'int'},         'peer': 'apt-methods-http', 'timestamp': 101},
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'file_inherit'}, 'signal': {'term'},        'peer': 'apt-methods-http', 'timestamp': 102},
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'},       'signal': {'hup'},         'peer': 'apt-methods-http', 'timestamp': 103},
+  ],              'synth': [
+{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'},       'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 107},
+  ]}
+        file_inherit_result1 = {'update-manager': [
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'file_inherit'}, 'signal': {'term'},        'peer': 'apt-methods-http', 'timestamp': 102},
+{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'},       'signal': {'int', 'hup'},  'peer': 'apt-methods-http', 'timestamp': 103},
+  ],              'synth': [
+{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'},       'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 107},  # preserve unaffected
+  ]}
+        self.assertEqual(mergeDictsBySingleKey(file_inherit_input1, 'signal'), file_inherit_result1)
+
 
     def test_mergeDictsByKeyPair(self):
         linePairs = (
@@ -986,63 +1178,165 @@ class mergeTests(unittest.TestCase):
         for inpt,result in linePairs:
             self.assertEqual(mergeDictsByKeyPair(inpt, 'mask', 'operation'), result)
 
-class otherMergeTests(unittest.TestCase):
-
-    def setUp(self):
-        self.blu = '\x1b[0;34m'
-        self.rst = '\x1b[0m'
-        self.maxDiff = None
-
-    def test_mergeDictsByKeyPair_comms(self):
         fileDifferentComms_normalized = {'aa_suggest': [
 {'comm': 'python2', 'mask': {'c'}, 'path': '/tmp/synthetic0', 'timestamp': 1, 'operation': {'mknod'}},
 {'comm': 'python3', 'mask': {'c'}, 'path': '/tmp/synthetic0', 'timestamp': 2, 'operation': {'mknod'}},
         ]}
-        beforePossibleChange = copy.deepcopy(fileDifferentComms_normalized)
-        self.assertEqual(mergeDictsByKeyPair(fileDifferentComms_normalized, 'mask', 'operation'), beforePossibleChange)
+        beforePossibleChangeComms = copy.deepcopy(fileDifferentComms_normalized)
+        self.assertEqual(mergeDictsByKeyPair(fileDifferentComms_normalized, 'mask', 'operation'), beforePossibleChangeComms)
 
-    def test_mergeSignals(self):
-        # TODO: no changes; 3 merges
-        inpt   = {'update-manager': [
-{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'int'},         'peer': 'apt-methods-http', 'timestamp': 101},
-{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'term'},        'peer': 'apt-methods-http', 'timestamp': 102},
-{'requested_mask': 'receive', 'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'hup'},         'peer': 'apt-methods-http', 'timestamp': 103},
+        file_inherit_input1   = {'tracker-miner': [
+{'operation': {'rename_dest'},         'comm': 'tracker-miner-f', 'mask': {'w', 'c'},      'path': '/tmp/f.txt', 'timestamp': 1},
+{'operation': {'file_inherit'},        'comm': 'tracker-miner-f', 'mask': {'w', 'd'},      'path': '/tmp/f.txt', 'timestamp': 2},
+{'operation': {'open'},                'comm': 'tracker-miner-f', 'mask': {'r'},           'path': '/tmp/f.txt', 'timestamp': 3},
   ],              'synth': [
-{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'}, 'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 104},
+{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'}, 'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 107},
   ]}
-        result = {'update-manager': [
-{'requested_mask': 'send',    'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'int', 'term'}, 'peer': 'apt-methods-http', 'timestamp': 102},
-{'requested_mask': 'receive', 'comm': {'update-manager'}, 'operation': {'signal'}, 'signal': {'hup'},         'peer': 'apt-methods-http', 'timestamp': 103}, # preserve unaffected
+        file_inherit_result1 = {'tracker-miner': [
+{'operation': {'file_inherit'},        'comm': 'tracker-miner-f', 'mask': {'w', 'd'},      'path': '/tmp/f.txt', 'timestamp': 2},
+{'operation': {'open', 'rename_dest'}, 'comm': 'tracker-miner-f', 'mask': {'r', 'w', 'c'}, 'path': '/tmp/f.txt', 'timestamp': 3},
   ],              'synth': [
-{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'}, 'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 104}, # preserve unaffected
+{'requested_mask': 'send',    'comm': {'keep-me'},        'operation': {'signal'}, 'signal': {'int'},         'peer': 'synth-peer',       'timestamp': 107},  # preserve unaffected
   ]}
-        self.assertEqual(mergeDictsBySingleKey(inpt, 'signal'), result)
+        self.assertEqual(mergeDictsByKeyPair(file_inherit_input1, 'mask', 'operation'), file_inherit_result1)
 
-    def test_mergeDownCommMasks(self):
+    def test_mergeCommMasks(self):
+        blu = '\x1b[0;34m'
+        rst = '\x1b[0m'
         inpt   = {'apt': [
 {'comm': {'sh'},                         'path': '@{bin}/touch', 'path_diffs': [[(0, 6), '/usr/bin']], 'timestamp': 10, 'mask': {'x'},      'operation': {'exec'}},
-{'comm': {f'{self.blu}touch{self.rst}'}, 'path': '@{bin}/touch', 'path_diffs': [[(0, 6), '/usr/bin']], 'timestamp': 11, 'mask': {'r', 'I'}, 'operation': {'file_mmap'}},  # previously hinted ix
+{'comm': {f'{blu}touch{rst}'}, 'path': '@{bin}/touch', 'path_diffs': [[(0, 6), '/usr/bin']], 'timestamp': 11, 'mask': {'r', 'i'}, 'operation': {'file_mmap'}},  # previously hinted ix
   ],              'xrdb': [
 {'path': '/etc/X11/Xresources/x11-common', 'timestamp': 13, 'mask': {'r'}, 'operation': {'open'}, 'comm': {'xrdb', 'cc1'}},
   ]}
         result = {'apt': [
-{'path': '@{bin}/touch', 'path_diffs': [[(0, 6), '/usr/bin']], 'timestamp': 11, 'operation': {'file_mmap', 'exec'}, 'comm': {'sh', f'{self.blu}touch{self.rst}'}, 'mask': {'x', 'r', 'I'}, 'transition_mask': {'r', 'I'}},
+{'path': '@{bin}/touch', 'path_diffs': [[(0, 6), '/usr/bin']], 'timestamp': 11, 'operation': {'file_mmap', 'exec'}, 'comm': {'sh', f'{blu}touch{rst}'}, 'mask': {'x', 'r', 'i'}, 'transition_mask': {'r', 'i'}},
   ],              'xrdb': [
 {'path': '/etc/X11/Xresources/x11-common', 'timestamp': 13, 'mask': {'r'}, 'operation': {'open'}, 'comm': {'xrdb', 'cc1'}},
   ]}
-        self.assertEqual(mergeDownCommMasks(inpt), result)
+        self.assertEqual(mergeCommMasks(inpt), result)
 
         inpt2   = {'apt': [
-{'comm': {f'{self.blu}touch{self.rst}'}, 'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 20, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
-{'comm': {f'{self.blu}test{self.rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 21, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
-{'comm': {f'{self.blu}echo{self.rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 22, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
-{'comm': {'synth'}, 'path': '/var/lib/command-not-found/', 'timestamp': 23, 'mask': {'r'}, 'operation': {'getattr'}},
+{'comm': {f'{blu}touch{rst}'}, 'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 20, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
+{'comm': {f'{blu}test{rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 21, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
+{'comm': {f'{blu}echo{rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 22, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
+{'comm': {'synth'},            'path': '/var/lib/command-not-found/', 'timestamp': 23, 'mask': {'r'}, 'operation': {'getattr'}},
+  ],
+                   'run-parts//motd': [
+{'trust': 10, 'comm': {f'{blu}wc{rst}'},   'path': '/var/lib/unattended-upgrades/kept-back', 'timestamp': 40, 'mask': {'r'}, 'operation': {'file_inherit'}},
+{'trust': 10, 'comm': {'update-motd-una'}, 'path': '/var/lib/unattended-upgrades/kept-back', 'timestamp': 41, 'mask': {'r'}, 'operation': {'open'}},
+{'trust': 10, 'comm': {'update-motd-una'}, 'path': '/{,usr/}bin/wc',                         'timestamp': 42, 'mask': {'x'}, 'operation': {'exec'}, 'path_diffs': [[(1, 8), 'usr/']]},
+{'trust': 10,                              'path': '/tmp/synth',                             'timestamp': 43, 'mask': {'r'}, 'operation': {'open'}},
+{'trust': 10, 'comm': {'im-launch'},       'path': '/{,usr/}bin/dash', 'path_diffs': [[(1, 8), 'usr/']], 'timestamp': 44, 'mask': {'r'}, 'operation': {'file_mmap'}},
+{'trust': 10, 'comm': {f'{blu}env{rst}'},  'path': '/{,usr/}bin/dash', 'path_diffs': [[(1, 8), 'usr/']], 'timestamp': 45, 'mask': {'x'}, 'operation': {'exec'}},
   ]}
         result2 = {'apt': [
-{'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 22, 'operation': {'file_inherit'}, 'comm': {f'{self.blu}touch{self.rst}', f'{self.blu}test{self.rst}', f'{self.blu}echo{self.rst}'}, 'mask': {'w', 'r'}, 'transition_mask': {'w', 'r'}},
-{'comm': {'synth'}, 'path': '/var/lib/command-not-found/', 'timestamp': 23, 'mask': {'r'}, 'operation': {'getattr'}}, # preserve unaffected
+{'comm': {f'{blu}touch{rst}'}, 'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 20, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}, 'transition_mask': {'r', 'w'}},
+{'comm': {f'{blu}test{rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 21, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}, 'transition_mask': {'r', 'w'}},
+{'comm': {f'{blu}echo{rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 22, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}, 'transition_mask': {'r', 'w'}},
+{'comm': {'synth'},            'path': '/var/lib/command-not-found/', 'timestamp': 23, 'mask': {'r'}, 'operation': {'getattr'}},  # preserve unaffected
+  ],
+                   'run-parts//motd': [
+{'trust': 10, 'comm': {f'{blu}wc{rst}'},   'path': '/var/lib/unattended-upgrades/kept-back', 'timestamp': 40, 'mask': {'r'}, 'operation': {'file_inherit'}, 'transition_mask': {'r'}},  # skipped because of 'file_inherit', but postcolorization was still assigned
+{'trust': 10,                              'path': '/tmp/synth',                             'timestamp': 43, 'mask': {'r'}, 'operation': {'open'}},  # keep non-mergable
+{'trust': 10, 'comm': {'update-motd-una'}, 'path': '/var/lib/unattended-upgrades/kept-back', 'timestamp': 41, 'mask': {'r'}, 'operation': {'open'}},
+{'trust': 10, 'comm': {'update-motd-una'}, 'path': '/{,usr/}bin/wc',                         'timestamp': 42, 'mask': {'x'}, 'operation': {'exec'}, 'path_diffs': [[(1, 8), 'usr/']]},
+{'trust': 10, 'comm': {'im-launch', f'{blu}env{rst}'}, 'path': '/{,usr/}bin/dash', 'path_diffs': [[(1, 8), 'usr/']], 'timestamp': 45, 'mask': {'r', 'x'}, 'operation': {'exec', 'file_mmap'}, 'transition_mask': {'x'}},
   ]}
-        self.assertEqual(mergeDownCommMasks(inpt2), result2)
+        self.assertEqual(mergeCommMasks(inpt2), result2)
+
+         # Merge file_inherit with itself; TODO
+#        inpt2   = {'apt': [
+#{'comm': {f'{blu}touch{rst}'}, 'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 20, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
+#{'comm': {f'{blu}test{rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 21, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
+#{'comm': {f'{blu}echo{rst}'},  'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 22, 'mask': {'w', 'r'}, 'operation': {'file_inherit'}},
+#{'comm': {'synth'}, 'path': '/var/lib/command-not-found/', 'timestamp': 23, 'mask': {'r'}, 'operation': {'getattr'}},
+#  ]}
+#        result2 = {'apt': [
+#{'path': '/dev/pts/@{int}', 'path_diffs': [[(9, 15), '0']], 'path_prefix': 'owner', 'timestamp': 22, 'operation': {'file_inherit'}, 'comm': {f'{blu}touch{rst}', f'{blu}test{rst}', f'{blu}echo{rst}'}, 'mask': {'w', 'r'}, 'transition_mask': {'w', 'r'}},
+#{'comm': {'synth'}, 'path': '/var/lib/command-not-found/', 'timestamp': 23, 'mask': {'r'}, 'operation': {'getattr'}},  # preserve unaffected
+#  ]}
+#        self.assertEqual(mergeCommMasks(inpt2), result2)
+
+    def test_mergeLinkMasks(self):
+        inpt   = {'vlc': [
+{'path': '@{user_config_dirs}/vlc/#@{int}',                        'path_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']],   'path_prefix': 'owner', 'mask': {'w', 'r'},                'operation': {'open', 'chmod'}, 'timestamp': 0},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.lock',     'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w', 'd', 'k'}, 'operation': {'open', 'file_lock', 'unlink', 'mknod'}, 'timestamp': 1},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf',          'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w'},           'operation': {'open', 'rename_dest'}, 'timestamp': 2},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(46, 54), 'QowpDu']],   'path_prefix': 'owner', 'mask': {'l'},                     'operation': {'link'}, 'target': '@{user_config_dirs}/vlc/#@{int}', 'target_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']], 'target_prefix': 'owner', 'timestamp': 3},  # merge subject 1
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(46, 54), 'QowpDu']],   'path_prefix': 'owner', 'mask': {'r', 'd', 'w'},           'operation': {'rename_src'}, 'timestamp': 4},  # merge subject 1
+{'path': '/tmp/f', 'mask': {'l'},           'operation': {'link'},       'comm': {'synth'}, 'target': '/tmp/1234', 'timestamp': 5},  # merge subject 2
+{'path': '/tmp/f', 'mask': {'r', 'd', 'w'}, 'operation': {'rename_src'}, 'comm': {'synth'}, 'timestamp': 6},  # merge subject 2
+{'path': '/dev/shm/f', 'mask': {'r'}, 'operation': {'open'}, 'comm': {'synth'}, 'timestamp': 7},  # preserve unaffected
+  ],              'qbittorrent': [
+{'path': '@{user_config_dirs}/qBittorrent/qBittorrent-data.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(54, 62), 'BcLDls']], 'path_prefix': 'owner', 'mask': {'l'},               'operation': {'link'}, 'target': '@{user_config_dirs}/qBittorrent/#@{int}', 'comm': {'qbittorrent'}, 'target_diffs': [[(0, 19), '/home/user/.config'], [(33, 39), '667638']], 'target_prefix': 'owner', 'timestamp': 7},  # merge subject 3
+{'path': '@{user_config_dirs}/qBittorrent/qBittorrent-data.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(54, 62), 'BcLDls']], 'path_prefix': 'owner', 'mask': {'r', 'd', 'w'},     'operation': {'rename_src'}, 'comm': {'qbittorrent'}, 'timestamp': 8},  # merge subject 3
+  ],              'xrdb': [
+{'path': '/etc/X11/Xresources/x11-common', 'timestamp': 11, 'mask': {'r'}, 'operation': {'open'}, 'comm': {'xrdb', 'cc1'}},
+  ]}
+        result = {'vlc': [
+{'path': '@{user_config_dirs}/vlc/#@{int}',                        'path_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']],   'path_prefix': 'owner', 'mask': {'w', 'r'},                'operation': {'open', 'chmod'}, 'timestamp': 0},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.lock',     'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w', 'd', 'k'}, 'operation': {'open', 'file_lock', 'unlink', 'mknod'}, 'timestamp': 1},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf',          'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w'},           'operation': {'open', 'rename_dest'}, 'timestamp': 2},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(46, 54), 'QowpDu']],   'path_prefix': 'owner', 'mask': {'l', 'w', 'd', 'r'},      'operation': {'link', 'rename_src'}, 'target': '@{user_config_dirs}/vlc/#@{int}', 'target_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']], 'target_prefix': 'owner', 'timestamp': 4},  # merged 1
+{'path': '/tmp/f', 'mask': {'l', 'r', 'd', 'w'}, 'operation': {'link', 'rename_src'}, 'comm': {'synth'}, 'target': '/tmp/1234', 'timestamp': 6},  # merged 2
+{'path': '/dev/shm/f', 'mask': {'r'}, 'operation': {'open'}, 'comm': {'synth'}, 'timestamp': 7},  # preserve unaffected
+  ],              'qbittorrent': [
+{'path': '@{user_config_dirs}/qBittorrent/qBittorrent-data.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(54, 62), 'BcLDls']], 'path_prefix': 'owner', 'mask': {'l', 'r', 'd', 'w'},'operation': {'link', 'rename_src'}, 'target': '@{user_config_dirs}/qBittorrent/#@{int}', 'target_diffs': [[(0, 19), '/home/user/.config'], [(33, 39), '667638']], 'target_prefix': 'owner', 'comm': {'qbittorrent'}, 'timestamp': 8},  # merged 3
+  ],              'xrdb': [
+{'path': '/etc/X11/Xresources/x11-common', 'timestamp': 11, 'mask': {'r'}, 'operation': {'open'}, 'comm': {'xrdb', 'cc1'}},
+  ]}
+        self.assertEqual(mergeLinkMasks(inpt), result)
+
+        file_inherit_inpt   = {'vlc': [
+{'path': '@{user_config_dirs}/vlc/#@{int}',                        'path_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']],   'path_prefix': 'owner', 'mask': {'w', 'r'},                'operation': {'open', 'chmod'}, 'timestamp': 0},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.lock',     'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w', 'd', 'k'}, 'operation': {'open', 'file_lock', 'unlink', 'mknod'}, 'timestamp': 1},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf',          'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w'},           'operation': {'open', 'rename_dest'}, 'timestamp': 2},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(46, 54), 'QowpDu']],   'path_prefix': 'owner', 'mask': {'l'},                     'operation': {'link'}, 'target': '@{user_config_dirs}/vlc/#@{int}', 'target_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']], 'target_prefix': 'owner', 'timestamp': 3},  # merge subject 1
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(46, 54), 'QowpDu']],   'path_prefix': 'owner', 'mask': {'r', 'd', 'w'},           'operation': {'rename_src'}, 'timestamp': 4},  # merge subject 1
+{'path': '/tmp/f', 'mask': {'l'},           'operation': {'link'},         'comm': {'synth'}, 'target': '/tmp/1234', 'timestamp': 5},  # invalid merge subject 2
+{'path': '/tmp/f', 'mask': {'r', 'd', 'w'}, 'operation': {'file_inherit'}, 'comm': {'synth'}, 'timestamp': 6},  # invalid merge subject 2
+{'path': '/dev/shm/f', 'mask': {'r'}, 'operation': {'open'}, 'comm': {'synth'}, 'timestamp': 7},  # preserve unaffected
+  ],              'xrdb': [
+{'path': '/etc/X11/Xresources/x11-common', 'timestamp': 11, 'mask': {'r'}, 'operation': {'open'}, 'comm': {'xrdb', 'cc1'}},
+  ]}
+        file_inherit_result = {'vlc': [
+{'path': '@{user_config_dirs}/vlc/#@{int}',                        'path_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']],   'path_prefix': 'owner', 'mask': {'w', 'r'},                'operation': {'open', 'chmod'}, 'timestamp': 0},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.lock',     'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w', 'd', 'k'}, 'operation': {'open', 'file_lock', 'unlink', 'mknod'}, 'timestamp': 1},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf',          'path_diffs': [[(0, 19), '/home/user/.config']],                         'path_prefix': 'owner', 'mask': {'c', 'r', 'w'},           'operation': {'open', 'rename_dest'}, 'timestamp': 2},
+{'path': '@{user_config_dirs}/vlc/vlc-qt-interface.conf.@{rand6}', 'path_diffs': [[(0, 19), '/home/user/.config'], [(46, 54), 'QowpDu']],   'path_prefix': 'owner', 'mask': {'l', 'w', 'd', 'r'},      'operation': {'link', 'rename_src'}, 'target': '@{user_config_dirs}/vlc/#@{int}', 'target_diffs': [[(0, 19), '/home/user/.config'], [(25, 31), '667142']], 'target_prefix': 'owner', 'timestamp': 4},  # merged 1
+{'path': '/tmp/f', 'mask': {'l'},           'operation': {'link'},         'comm': {'synth'}, 'target': '/tmp/1234', 'timestamp': 5},  # invalid merge subject 2
+{'path': '/tmp/f', 'mask': {'r', 'd', 'w'}, 'operation': {'file_inherit'}, 'comm': {'synth'}, 'timestamp': 6},  # invalid merge subject 2
+{'path': '/dev/shm/f', 'mask': {'r'}, 'operation': {'open'}, 'comm': {'synth'}, 'timestamp': 7},  # preserve unaffected
+  ],              'xrdb': [
+{'path': '/etc/X11/Xresources/x11-common', 'timestamp': 11, 'mask': {'r'}, 'operation': {'open'}, 'comm': {'xrdb', 'cc1'}},
+  ]}
+        self.assertEqual(mergeLinkMasks(file_inherit_inpt), file_inherit_result)
+
+    def test_mergeExactDuplicates(self):
+        inpt = {'gnome-calculator-search-provider': [
+{'bus': 'session', 'name': 'org.gnome.Calculator.SearchProvider', 'mask': 'bind', 'operation': {'dbus_bind'}, 'timestamp': 1},
+{'bus': 'session', 'name': 'org.gnome.Calculator.SearchProvider', 'mask': 'bind', 'operation': {'dbus_bind'}, 'timestamp': 2},
+{'bus': 'session', 'name': 'org.gnome.Calculator.SearchProvider', 'mask': 'bind', 'operation': {'dbus_bind'}, 'timestamp': 3},
+{'capname': 'sys_admin',    'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 4},
+{'capname': 'sys_admin',    'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 5},
+{'capname': 'sys_resource', 'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 6},
+{'bus': 'session', 'path': '/org/gtk/Settings', 'interface': 'org.freedesktop.DBus.Properties', 'mask': 'send', 'name': ':1.[0-9]*', 'peer': 'gsd-xsettings', 'operation': {'dbus_method_call'}, 'timestamp': 7, 'member': 'GetAll'},
+],              'xdg-document-portal': [
+{'capname': 'sys_admin',    'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 11},
+{'capname': 'sys_resource', 'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 12},
+{'capname': 'sys_resource', 'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 13},
+]}
+        result = {'gnome-calculator-search-provider': [
+{'bus': 'session', 'name': 'org.gnome.Calculator.SearchProvider', 'mask': 'bind', 'operation': {'dbus_bind'}, 'timestamp': 3},
+{'capname': 'sys_admin',    'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 5},
+{'capname': 'sys_resource', 'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 6},
+{'bus': 'session', 'path': '/org/gtk/Settings', 'interface': 'org.freedesktop.DBus.Properties', 'mask': 'send', 'name': ':1.[0-9]*', 'peer': 'gsd-xsettings', 'operation': {'dbus_method_call'}, 'timestamp': 7, 'member': 'GetAll'},
+],              'xdg-document-portal': [
+{'capname': 'sys_admin',    'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 11},
+{'capname': 'sys_resource', 'comm': {'fuse mainloop'}, 'operation': {'capable'}, 'timestamp': 13},
+]}
+        self.assertEqual(mergeExactDuplicates(inpt), result)
 
 class abstractionsTests(unittest.TestCase):
     '''Match = hide'''
@@ -1388,7 +1682,114 @@ class abstractionsTests(unittest.TestCase):
         for t in self.allProfileTypes:
             [self.assertFalse(isBaseAbstractionTransition(l, t)) for l in self.alwaysFalse]
 
+class otherTests(unittest.TestCase):
+
+    def setUp(self):
+        self.maxDiff = None
+
+    def test_composeSuffix(self):
+        bblu = '\x1b[0;94m'
+        blu  = '\x1b[0;34m'
+        rst  = '\x1b[0m'
+        inputResultPair = (
+({'path_diffs': [[(0, 7), '/proc'], [(8, 14), '2126']], 'operation': {'open'}, 'comm': {'tracker-miner-f'}},
+    f'comm=tracker-miner-f operation=open path_diffs=/proc{bblu},{rst}2126'),
+({'operation': {'mknod'}, 'path_diffs': [[(41, 49), '7TU24T']], 'comm': {'[pango] FcInit'}},
+    f"comm='[pango] FcInit' operation=mknod path_diffs=7TU24T"),
+({'path_diffs': [[(0, 6), '/run'], [(12, 18), '1000'], [(27, 33), '0']], 'operation': {'connect'}, 'comm': {'xdg-desktop-por'}},
+    f'comm=xdg-desktop-por operation=connect path_diffs=/run{bblu},{rst}1000{bblu},{rst}0'),
+({'operation': {'file_perm'}, 'comm': {'Xwayland'}, 'addr_diffs': [[(17, 23), '1']], 'addr_prefix': 'owner'},
+    f'comm=Xwayland operation=file_perm addr_diffs=1'),
+        )
+        for i,r in inputResultPair:
+            hideKeys = []
+            self.assertEqual(composeSuffix(i, hideKeys), r)
+
+        inputResultPair_hide = (
+({'path_diffs': [[(0, 7), '/proc'], [(8, 14), '2126']], 'operation': {'open'}, 'comm': {'tracker-miner-f'}},
+    f'operation=open'),
+({'operation': {'mknod'}, 'path_diffs': [[(41, 49), '7TU24T']], 'comm': {'[pango] FcInit'}},
+    f"operation=mknod"),
+({'path_diffs': [[(0, 6), '/run'], [(12, 18), '1000'], [(27, 33), '0']], 'operation': {'connect'}, 'comm': {'xdg-desktop-por'}},
+    f'operation=connect'),
+({'operation': {'file_perm'}, 'comm': {'Xwayland'}, 'addr_diffs': [[(17, 23), '1']], 'addr_prefix': 'owner'},
+    f'operation=file_perm'),
+        )
+        for i,r in inputResultPair_hide:
+            hideKeys = ['*_diffs', 'comm']
+            self.assertEqual(composeSuffix(i, hideKeys), r)
+
+        inputResultPair_hideAll = (
+({'path_diffs': [[(0, 7), '/proc'], [(8, 14), '2126']], 'operation': {'open'}, 'comm': {'tracker-miner-f'}},
+    None),
+({'operation': {'mknod'}, 'path_diffs': [[(41, 49), '7TU24T']], 'comm': {'[pango] FcInit'}},
+    None),
+({'path_diffs': [[(0, 6), '/run'], [(12, 18), '1000'], [(27, 33), '0']], 'operation': {'connect'}, 'comm': {'xdg-desktop-por'}},
+    None),
+({'operation': {'file_perm'}, 'comm': {'Xwayland'}, 'addr_diffs': [[(17, 23), '1']], 'addr_prefix': 'owner'},
+    None),
+        )
+        for i,r in inputResultPair_hideAll:
+            hideKeys = ['ALL']
+            self.assertEqual(composeSuffix(i, hideKeys), r)
+
+    def test_findLogLines(self):
+        '''All inputs are made up'''
+        args = handleArgs()
+        eventsAndLines = (
+([
+{'_TRANSPORT': 'audit', 'SYSLOG_FACILITY': '4', 'SYSLOG_IDENTIFIER': 'audit', '_AUDIT_TYPE': '1107', '_AUDIT_TYPE_NAME': 'USER_AVC', '_UID': '102', 'MESSAGE': 'USER_AVC pid=1676 apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/NetworkManager" interface="org.freedesktop.DBus.Properties" member="GetAll" name=":1.149" mask="receive" pid=1677 label="NetworkManager" peer_pid=19096 peer_label="cups-browsed"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?', '__REALTIME_TIMESTAMP': 111111},  # USER_AVC; synth
+
+{'_TRANSPORT': 'audit', 'SYSLOG_FACILITY': '4', 'SYSLOG_IDENTIFIER': 'audit', '_AUDIT_TYPE': '1107', '_AUDIT_TYPE_NAME': 'USER_AVC', '_UID': '102', 'MESSAGE': 'USER_AVC pid=1676 auid=4294967295 ses=4294967295 subj=dbus-daemon msg=\'apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/NetworkManager" interface="org.freedesktop.DBus.Properties" member="GetAll" name=":1.149" mask="receive" pid=1677 label="NetworkManager" peer_pid=19096 peer_label="cups-browsed"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?\'', '__REALTIME_TIMESTAMP': 111112},  # nested USER_AVC
+
+{'_UID': '1000', '_GID': '1000', '_TRANSPORT': 'syslog', 'PRIORITY': '5', 'SYSLOG_IDENTIFIER': 'dbus-daemon', 'MESSAGE': 'apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/NetworkManager" interface="org.freedesktop.DBus.Properties" member="GetAll" name=":1.149" mask="receive" pid=1677 label="NetworkManager" peer_pid=19096 peer_label="cups-browsed"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?', '__REALTIME_TIMESTAMP': 999998},  # plain MESSAGE; synth
+
+{'_UID': '1000', '_GID': '1000', '_TRANSPORT': 'syslog', 'PRIORITY': '5', 'SYSLOG_IDENTIFIER': 'audit', 'MESSAGE': 'msg=\'AVC apparmor="ALLOWED" operation="file_inherit" profile="touch" name="/tmp/f" pid=19156 comm="touch" requested_mask="wr" denied_mask="wr" fsuid=1000 ouid=1000\'', '__REALTIME_TIMESTAMP': 111114},  # non-consumed nested MESSAGE; synth
+
+{'_UID': '1000', '_GID': '1000', '_TRANSPORT': 'syslog', 'PRIORITY': '5', 'SYSLOG_IDENTIFIER': 'audit', 'MESSAGE': 'msg=\'AVC apparmor="ALLOWED" operation="open"         profile="echo" name="/tmp/echo" pid=19156 comm="echo" requested_mask="wr" denied_mask="wr" fsuid=1000 ouid=1000\'', '__REALTIME_TIMESTAMP': 111115},  # consumed nested MESSAGE; synth
+
+{'_AUDIT_TYPE_NAME': 'AVC',      '_TRANSPORT': 'syslog', 'PRIORITY': '5', 'SYSLOG_IDENTIFIER': 'audit', 'MESSAGE':       'AVC apparmor="ALLOWED" operation="open"         profile="echo" name="/tmp/echo" pid=19156 comm="echo" requested_mask="wr" denied_mask="wr" fsuid=1000 ouid=1000', '__REALTIME_TIMESTAMP': 111116},  # takes priority; synth
+
+{'_UID': '1000', '_GID': '1000', '_TRANSPORT': 'syslog', 'PRIORITY': '5', 'SYSLOG_IDENTIFIER': 'dbus-daemon', 'MESSAGE': 'AVC apparmor="ALLOWED" operation="file_inherit" profile="systemd-cat" name="/etc/secret.key" pid=19156 comm="systemd-cat" requested_mask="wr" denied_mask="wr" fsuid=1000 ouid=1000', '__REALTIME_TIMESTAMP': 111117},  # potential log poisoning; not consumed; synth
+
+{'_AUDIT_TYPE_NAME': 'AVC',      '_TRANSPORT': 'syslog', 'PRIORITY': '5', 'SYSLOG_IDENTIFIER': 'audit', 'MESSAGE':       'AVC apparmor="ALLOWED" operation="file_inherit" profile="systemd-cat" name="/etc/secret.key" pid=19156 comm="systemd-cat" requested_mask="wr" denied_mask="wr" fsuid=1000 ouid=1000', '__REALTIME_TIMESTAMP': 111118},  # not a log poisoning; synth
+
+{'_AUDIT_TYPE': '1107', '_AUDIT_TYPE_NAME': 'USER_AVC', '_UID': 102, '_SELINUX_CONTEXT': 'dbus-daemon', 'AUDIT_FIELD_APPARMOR': '"ALLOWED"', 'AUDIT_FIELD_BUS': '"system"', 'AUDIT_FIELD_INTERFACE': '"org.freedesktop.DBus.Properties"', 'AUDIT_FIELD_MASK': '"send"', 'AUDIT_FIELD_EXE': '/usr/bin/dbus-daemon', 'AUDIT_FIELD_SAUID': '102', 'AUDIT_FIELD_HOSTNAME': '?', 'AUDIT_FIELD_ADDR': '?', 'AUDIT_FIELD_TERMINAL': '?', 'AUDIT_FIELD_OPERATION': '"dbus_method_call"', 'AUDIT_FIELD_MEMBER': '"GetAll"', 'AUDIT_FIELD_PEER_LABEL': '"systemd-logind"\n', 'AUDIT_FIELD_PATH': '"/org/freedesktop/login1/session/_41"', 'AUDIT_FIELD_LABEL': '"gnome-shell"', '_AUDIT_ID': '1992', '_PID': 1695, 'AUDIT_FIELD_PEER_PID': '1711', 'MESSAGE': 'USER_AVC pid=1695 uid=102 auid=4294967295 ses=4294967295 subj=dbus-daemon msg=\'apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/login1/session/_41" interface="org.freedesktop.DBus.Properties" member="GetAll" mask="send" name=":1.1" pid=2166 label="gnome-shell" peer_pid=1711 peer_label="systemd-logind"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?\'', 'AUDIT_FIELD_PID': '2166', '__REALTIME_TIMESTAMP': 111119},
+
+{'_TRANSPORT': 'syslog', 'PRIORITY': 5, 'SYSLOG_FACILITY': 1, 'SYSLOG_IDENTIFIER': 'dbus-daemon', 'SYSLOG_PID': 1989, '_PID': 1989, '_UID': 1000, '_GID': 1000, '_COMM': 'dbus-daemon', '_EXE': '/usr/bin/dbus-daemon', '_CMDLINE': '/usr/bin/dbus-daemon --session --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only', '_CAP_EFFECTIVE': '0', '_SELINUX_CONTEXT': 'dbus-daemon (complain)\n', '_AUDIT_SESSION': 2, '_AUDIT_LOGINUID': 1000, '_SYSTEMD_CGROUP': '/user.slice/user-1000.slice/user@1000.service/app.slice/dbus.service', '_SYSTEMD_OWNER_UID': 1000, '_SYSTEMD_UNIT': 'user@1000.service', '_SYSTEMD_USER_UNIT': 'dbus.service', '_SYSTEMD_SLICE': 'user-1000.slice', '_SYSTEMD_USER_SLICE': 'app.slice', 'MESSAGE': 'apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/login1/session/_41" interface="org.freedesktop.DBus.Properties" member="GetAll" mask="send" name=":1.1" pid=2166 label="gnome-shell" peer_pid=1711 peer_label="systemd-logind"', '__REALTIME_TIMESTAMP': 111120},
+
+{'_TRANSPORT': 'syslog', 'PRIORITY': 5, 'SYSLOG_FACILITY': 1, 'SYSLOG_IDENTIFIER': 'dbus-daemon', 'SYSLOG_PID': 1989, '_PID': 1989, '_UID': 1000, '_GID': 1000, '_COMM': 'dbus-daemon', '_EXE': '/usr/bin/dbus-daemon', '_CMDLINE': '/usr/bin/dbus-daemon --session --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only', '_CAP_EFFECTIVE': '0', '_SELINUX_CONTEXT': 'dbus-daemon (complain)\n', '_AUDIT_SESSION': 2, '_AUDIT_LOGINUID': 1000, '_SYSTEMD_CGROUP': '/user.slice/user-1000.slice/user@1000.service/app.slice/dbus.service', '_SYSTEMD_OWNER_UID': 1000, '_SYSTEMD_UNIT': 'user@1000.service', '_SYSTEMD_USER_UNIT': 'dbus.service', '_SYSTEMD_SLICE': 'user-1000.slice', '_SYSTEMD_USER_SLICE': 'app.slice', 'MESSAGE': 'apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/login1/seat/seat25" interface="org.freedesktop.DBus.Properties" member="GetAll" mask="send" name=":1.1" pid=2166 label="gnome-shell" peer_pid=1711 peer_label="systemd-logind"', '__REALTIME_TIMESTAMP': 111121},
+
+{'_AUDIT_TYPE': '1107', '_AUDIT_TYPE_NAME': 'USER_AVC', '_UID': 102, '_SELINUX_CONTEXT': 'dbus-daemon', 'AUDIT_FIELD_APPARMOR': '"ALLOWED"', 'AUDIT_FIELD_BUS': '"system"', 'AUDIT_FIELD_INTERFACE': '"org.freedesktop.DBus.Properties"', 'AUDIT_FIELD_MASK': '"send"', 'AUDIT_FIELD_EXE': '/usr/bin/dbus-daemon', 'AUDIT_FIELD_SAUID': '102', 'AUDIT_FIELD_HOSTNAME': '?', 'AUDIT_FIELD_ADDR': '?', 'AUDIT_FIELD_TERMINAL': '?', 'AUDIT_FIELD_OPERATION': '"dbus_method_call"', 'AUDIT_FIELD_MEMBER': '"GetAll"', 'AUDIT_FIELD_PEER_LABEL': '"systemd-logind"\n', 'AUDIT_FIELD_PATH': '"/org/freedesktop/login1/seat/seat25"', 'AUDIT_FIELD_LABEL': '"gnome-shell"', '_AUDIT_ID': '1992', '_PID': 1695, 'AUDIT_FIELD_PEER_PID': '1711', 'MESSAGE': 'USER_AVC pid=1695 uid=102 auid=4294967295 ses=4294967295 subj=dbus-daemon msg=\'apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/login1/seat/seat25" interface="org.freedesktop.DBus.Properties" member="GetAll" mask="send" name=":1.1" pid=2166 label="gnome-shell" peer_pid=1711 peer_label="systemd-logind"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?\'', 'AUDIT_FIELD_PID': '2166', '__REALTIME_TIMESTAMP': 999999},
+
+{'_SELINUX_CONTEXT': 'dbus-daemon', 'MESSAGE': 'pid=1695 uid=102 auid=4294967295 ses=4294967295 subj=dbus-daemon msg=\'apparmor="ALLOWED" operation="dbus_method_call"  bus="session" path="/MenuBar" interface="com.canonical.dbusmenu" member="GetLayout" mask="send" name=":1.141" pid=2166 label="gnome-shell" peer_pid=4317 peer_label="vlc"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?\'', '__REALTIME_TIMESTAMP': 111123},
+
+{'_TRANSPORT': 'syslog', 'PRIORITY': 5, 'SYSLOG_FACILITY': 1, 'SYSLOG_IDENTIFIER': 'dbus-daemon', 'SYSLOG_PID': 1989, '_PID': 1989, '_UID': 1000, '_GID': 1000, '_COMM': 'dbus-daemon', '_EXE': '/usr/bin/dbus-daemon', '_CMDLINE': '/usr/bin/dbus-daemon --session --address=systemd: --nofork --nopidfile --systemd-activation --syslog-only', '_CAP_EFFECTIVE': '0', '_SELINUX_CONTEXT': 'dbus-daemon (complain)\n', '_AUDIT_SESSION': 2, '_AUDIT_LOGINUID': 1000, '_SYSTEMD_CGROUP': '/user.slice/user-1000.slice/user@1000.service/app.slice/dbus.service', '_SYSTEMD_OWNER_UID': 1000, '_SYSTEMD_UNIT': 'user@1000.service', '_SYSTEMD_USER_UNIT': 'dbus.service', '_SYSTEMD_SLICE': 'user-1000.slice', '_SYSTEMD_USER_SLICE': 'app.slice', 'MESSAGE': 'apparmor="ALLOWED" operation="dbus_method_call"  bus="session" path="/MenuBar" interface="com.canonical.dbusmenu" member="GetLayout" mask="send" name=":1.141" pid=2166 label="gnome-shell" peer_pid=4317 peer_label="vlc"', '__REALTIME_TIMESTAMP': 111124},
+
+{'_SELINUX_CONTEXT': 'dbus-daemon', 'MESSAGE': 'pid=1695 uid=102 auid=4294967295 ses=4294967295 subj=dbus-daemon msg=\'apparmor="ALLOWED" operation="dbus_method_call"  bus="session" path="/MenuBar" interface="com.canonical.dbusmenu" member="GetLayout" mask="send" name=":1.141" pid=2166 label="gnome-shell" peer_pid=4317 peer_label="vlc"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?\'', '__REALTIME_TIMESTAMP': 111125},
+
+{'_AUDIT_TYPE': '1107', '_AUDIT_TYPE_NAME': 'AVC', '_UID': 102, '_SELINUX_CONTEXT': 'dbus-daemon', 'AUDIT_FIELD_APPARMOR': '"ALLOWED"', 'AUDIT_FIELD_BUS': '"session"', 'AUDIT_FIELD_INTERFACE': '"org.freedesktop.DBus.Properties"', 'AUDIT_FIELD_MASK': '"send"', 'AUDIT_FIELD_EXE': '/usr/bin/dbus-daemon', 'AUDIT_FIELD_SAUID': '102', 'AUDIT_FIELD_HOSTNAME': '?', 'AUDIT_FIELD_ADDR': '?', 'AUDIT_FIELD_TERMINAL': '?', 'AUDIT_FIELD_OPERATION': '"dbus_method_call"', 'AUDIT_FIELD_MEMBER': '"GetAll"', 'AUDIT_FIELD_PEER_LABEL': '"systemd-logind"\n', 'AUDIT_FIELD_PATH': '"/org/freedesktop/login1/session/_41"', 'AUDIT_FIELD_LABEL': '"gnome-shell"', '_AUDIT_ID': '1992', '_PID': 1695, 'AUDIT_FIELD_PEER_PID': '1711', 'MESSAGE': 'AVC pid=1695 uid=102 auid=4294967295 ses=4294967295 subj=dbus-daemon msg=\'apparmor="ALLOWED" operation="dbus_method_call"  bus="system" path="/org/freedesktop/login1/session/_41" interface="org.freedesktop.DBus.Properties" member="GetAll" mask="send" name=":1.1" pid=2166 label="gnome-shell" peer_pid=1711 peer_label="systemd-logind"\n exe="/usr/bin/dbus-daemon" sauid=102 hostname=? addr=? terminal=?\'', 'AUDIT_FIELD_PID': '2166', '__REALTIME_TIMESTAMP': 111126},
+
+{'_AUDIT_TYPE_NAME': 'USER_AVC',      '_TRANSPORT': 'syslog', 'PRIORITY': '5', 'SYSLOG_IDENTIFIER': 'audit', 'MESSAGE':       'USER_AVC apparmor="ALLOWED" operation="open"         profile="grep" name="/tmp/secret.key" pid=19156 comm="grep" requested_mask="wr" denied_mask="wr" fsuid=1000 ouid=1000', '__REALTIME_TIMESTAMP': 111127},
+
+{'MESSAGE': 'minimal', '__REALTIME_TIMESTAMP': 111128},
+], ([
+{'timestamp': 999998, 'bus': 'system', 'interface': 'org.freedesktop.DBus.Properties', 'label': 'NetworkManager', 'mask': 'receive', 'member': 'GetAll', 'name': ':1.[0-9]*', 'operation': 'dbus_method_call', 'path': '/org/freedesktop/NetworkManager', 'peer_label': 'cups-browsed', 'trust': 8},  # consumed lower trusts for identical lines
+{'timestamp': 111114, 'comm': 'touch',       'name': '/tmp/f',          'operation': 'file_inherit', 'profile': 'touch',       'requested_mask': 'wr', 'trust': 4},  # was nested, but haven't fell under other conditions
+{'timestamp': 111116, 'comm': 'echo',        'name': '/tmp/echo',       'operation': 'open',         'profile': 'echo',        'requested_mask': 'wr', 'trust': 10},
+{'timestamp': 111117,'comm': 'systemd-cat', 'name': '/etc/secret.key', 'operation': 'file_inherit', 'profile': 'systemd-cat', 'requested_mask': 'wr', 'trust': 1},  # lower trust not merged
+{'timestamp': 111118, 'comm': 'systemd-cat', 'name': '/etc/secret.key', 'operation': 'file_inherit', 'profile': 'systemd-cat', 'requested_mask': 'wr', 'trust': 10}, # legitimate source
+{'timestamp': 111120, 'bus': 'system', 'interface': 'org.freedesktop.DBus.Properties', 'label': 'gnome-shell', 'mask': 'send', 'member': 'GetAll', 'name': ':1.[0-9]*', 'operation': 'dbus_method_call', 'path': '/org/freedesktop/login1/session/_41', 'peer_label': 'systemd-logind', 'trust': 8},
+{'timestamp': 999999, 'bus': 'system', 'interface': 'org.freedesktop.DBus.Properties', 'label': 'gnome-shell', 'mask': 'send', 'member': 'GetAll', 'name': ':1.[0-9]*', 'operation': 'dbus_method_call', 'path': '/org/freedesktop/login1/seat/seat25', 'peer_label': 'systemd-logind', 'trust': 8},
+{'timestamp': 111125, 'bus': 'session', 'interface': 'com.canonical.dbusmenu', 'label': 'gnome-shell', 'mask': 'send', 'member': 'GetLayout', 'name': ':1.[0-9]*', 'operation': 'dbus_method_call', 'path': '/MenuBar', 'peer_label': 'vlc', 'trust': 7},
+{'timestamp': 111126, 'bus': 'system', 'interface': 'org.freedesktop.DBus.Properties', 'label': 'gnome-shell', 'mask': 'send', 'member': 'GetAll', 'name': ':1.[0-9]*', 'operation': 'dbus_method_call', 'path': '/org/freedesktop/login1/session/_41', 'peer_label': 'systemd-logind', 'trust': 3},  # potential 'system' poisoning from 'session'; not merged with similar
+{'timestamp': 111127, 'comm': 'grep', 'name': '/tmp/secret.key', 'operation': 'open', 'profile': 'grep', 'requested_mask': 'wr', 'trust': 3},  # potential poisoning from DBus
+{'timestamp': 111128, 'trust': 4},  # minimal input still gets trust assigned
+], 999999)),
+        )
+        for j,r in eventsAndLines:
+            self.assertEqual(findLogLines(j, args), r)
+
 if __name__ == '__main__':
 
-    failIfNotConfined()
     unittest.main()

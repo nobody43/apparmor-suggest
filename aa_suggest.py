@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 # SPDX-License-Identifier: GPL-3.0-only
-# Version: 0.8
+# Version: 0.8.9
 
 # line, l - single log line in form of dictionary
 # normalize - prepare line values for a possible merge; make keys consistent
 # adapt - replace line values with sutable for usage in the rule
-# merge - make single line from many lines; explicitly by default, or ambiguously by params
-# explicitly - non-aggressive deduplication; no rule covarage is lost, but paths could be replaced by tunables
+# merge - make single line from many lines; unequivocally by default, or ambiguously by params
+# unequivocally - non-aggressive deduplication; no rule covarage is lost, but paths could be replaced by tunables
 # ambiguously - aggressive deduplication; some rule coverage could be broader than needed
-# keep/drop - include or exclude the line from deduplication, affects merging (preprocessing)
+# keep/drop - include or exclude the line from deduplication, affects merging (preprocessing); active filtering
 # show/hide - include or exclude the line from display, does NOT affect merging (postprocessing)
+# handle - passive filtering
 
 # MAIN FLOW:
 # gather logs ->
@@ -29,59 +30,81 @@ import shlex
 import pathlib
 import string
 import random
+import copy
 
 def adaptFilePath(l, key, ruleStyle):
     '''Applied early to fully handle duplicates.
        For file paths, not necessary file lines.
        Watch out for bugs: launchpad #1856738
-       Do only one capture per regex helper, otherwise diffs will be a mess (will match recursively)'''
+       Do only one capture per regex helper, otherwise diffs will be a mess (will match recursively)
+    '''
     # Always surround these helpers with other charactes or new/endlines
-    # Mix of different regex styles!; 'C' for capture
-    random6     = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9])(?:[0-9a-zA-Z]{6}|@{rand6})' # aBcXy9, AbcXyz, abcxy9, @{rand6}; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1
-    random8     = '(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9])(?:[0-9a-zA-Z]{8}|@{rand8})' # aBcDwXy9, AbcdWxyz, abcdwxy9, @{rand8}; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1
-    random10    = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9])(?:[0-9a-zA-Z]{10}|@{rand10})' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9, @{rand10}; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1
-    users       = '(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{uid})'
-    md5         = '(?:[0-9a-fA-F]{32}|\[0-9a-f\]\*\[0-9a-f\]|@{md5})'
-    hexes2      = '(?:[0-9a-fA-F]{2}|\[0-9a-f\]\[0-9a-f\]|@{h}@{h})'
-    hexes16     = '(?:[0-9a-fA-F]{16}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
-    hexes38     = '(?:[0-9a-fA-F]{38}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
-    ints        = '(?:\d+|\[0-9\]\*|@{int})'
-    uuid        = '(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12}|\[0-9a-f\]\*\[0-9a-f\]|@{uuid})'
-    etc_ro      = '(?:/usr/etc|@{etc_ro})'
-    run         = '(?:/var/run|/run|@{run})'
-    proc        = '(?:/proc|@{PROC})'
-    sys         = '(?:/sys|@{sys})'
-    pids        = '(?:[2-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{pid})' # 3-4999999999
-    tids        = '(?:[1-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{tid})' # 1-4999999999
-    multiarch   = '(?:[^/]+-linux-gnu(?:|[^/]+)|@{multiarch})'
-    user_cache  = '(?:@?/home/[^/]+/\.cache|@{user_cache_dirs})'
-    user_config = '(?:@?/home/[^/]+/\.config|@{user_config_dirs})'
-    homes       = '(?:@?/home/[^/]+|@{HOME})'
-    pciAddr     = '(?:\d{4}:\d{2}:\d{2}\.\d|\?\?\?\?:\?\?:\?\?\.\?)'
-    o3          = '(?:3|{\,3}|)' # optional '3'
-    oWayland    = '(?:-wayland|{\,-wayland}|)' # optional '-wayland'
-    usr         = '(?:usr/|{\,usr/}|)'
-    Any         = '(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
-    user_share  = '(?:@?/home/[^/]+/\.local/share|@{user_share_dirs})'
-    user_shareC = '(?:@?/home/[^/]+/\.local/share)'
+    # Capturing group must not be optional '?', but always provide at least empty '|' match
+    # Mix of regex and pcre styles!; 'C' for capture
+    random6  = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9])(?:[0-9a-zA-Z]{6})' # aBcXy9, AbcXyz, abcxy9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1
+    random8  = '(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9])(?:[0-9a-zA-Z]{8})' # aBcDwXy9, AbcdWxyz, abcdwxy9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1
+    random10 = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9])(?:[0-9a-zA-Z]{10})' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1
+    users        = '(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{uid})'
+    usersC       = '(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'
+    hex32        = '(?:[0-9a-fA-F]{32}|\[0-9a-f\]\*\[0-9a-f\]|@{hex32})'
+    hex32C       = '(?:[0-9a-fA-F]{32})'
+    hex2         = '(?:[0-9a-fA-F]{2}|\[0-9a-f\]\[0-9a-f\]|@{h}@{h})'
+    hex2C        = '(?:[0-9a-fA-F]{2})'
+    hex16        = '(?:[0-9a-fA-F]{16}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
+    hex16C       = '(?:[0-9a-fA-F]{16})'
+    hex38        = '(?:[0-9a-fA-F]{38}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
+    hex38C       = '(?:[0-9a-fA-F]{38})'
+    ints         = '(?:\d+|\[0-9\]\*|@{int})'
+    uuid         = '(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12}|\[0-9a-f\]\*\[0-9a-f\]|@{uuid})'
+    uuidC        = '(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})'
+    etc_ro       = '(?:/usr/etc|@{etc_ro})'
+    run          = '(?:/var/run|/run|@{run})'
+    runC         = '(?:/var/run|/run)'
+    proc         = '(?:/proc|@{PROC})'
+    procC        = '(?:/proc)'
+    sys          = '(?:/sys|@{sys})'
+    sysC         = '(?:/sys)'
+    pids         = '(?:[2-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{pid})'  # 3-4999999999
+    pidsC        = '(?:[2-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'         # 3-4999999999; capture
+    tids         = '(?:[1-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{tid})'  # 1-4999999999
+    tidsC        = '(?:[1-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'         # 1-4999999999; capture
+    multiarch    = '(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?|@{multiarch})'
+    multiarchC   = '(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?)'
+    user_cache   = '(?:@?/home/[^/]+/\.cache|@{user_cache_dirs})'
+    user_cacheC  = '(?:@?/home/[^/]+/\.cache)'
+    user_config  = '(?:@?/home/[^/]+/\.config|@{user_config_dirs})'
+    user_configC = '(?:@?/home/[^/]+/\.config)'
+    user_share   = '(?:@?/home/[^/]+/\.local/share|@{user_share_dirs})'
+    user_shareC  = '(?:@?/home/[^/]+/\.local/share)'
+    homes        = '(?:@?/home/[^/]+|@{HOME})'
+    homesC       = '(?:@?/home/[^/]+)'
+    pciId        = '(?:[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.\d|\?\?\?\?:\?\?:\?\?\.\?|@{pci_id})'
+    pciIdC       = '(?:[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.\d)'
+    o3           = '(?:3|{\,3})?'                # optional '3'
+    oWayland     = '(?:-wayland|{\,-wayland})?'  # optional '-wayland'
+    oUsr         = '(?:usr/|{\,usr/})?'          # optional '/usr'
+    oUsrC        = '(?:usr/)?'                   # optional '/usr'; capture
+    Any          = '(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
+    literalBackslash = '\\\\'
 
     # Special cases <3
-    if ruleStyle == 'roddhjav/apparmor.d':
-        Bin  = '(?:/(?:usr/)?(?:s)?bin|@{bin})'
-        BinC = '(?:/(?:usr/)?(?:s)?bin)'
-        #pci = ''
+    pciBus = '(?:(?:pci)?[0-9a-f]{4}:[0-9a-f]{2}|(?:pci)?\?\?\?\?:\?\?|@{pci_bus})'
+    if ruleStyle == 'AppArmor.d':
+        Bin     = '(?:/(?:usr/)?(?:s)?bin|@{bin})'
+        BinC    = '(?:/(?:usr/)?(?:s)?bin)'
+        pciBusC = '(?:pci[0-9a-f]{4}:[0-9a-f]{2})'
     else:
-        Bin  = '(?:/(?:usr/)?(?:s)?bin|/{\,usr/}bin)'
-        BinC = '(?:/(?:usr/)?bin)'
-        #pci = ''
+        Bin     = '(?:/(?:usr/)?(?:s)?bin|/{\,usr/}bin)'
+        BinC    = '(?:/(?:usr/)?bin)'
+        pciBusC = '(?:[0-9a-f]{4}:[0-9a-f]{2})'
 
     # Substitute capturing group with t[1] or t[2]; order matters when mentioned
     regexpToMacro = [  # non-tunables
  # regex                                                                            # default style         # apparmor.d style      # prefix, optional
 (f'^{user_share}/gvfs-metadata/(|{Any})$',                                           None,                  '{,*}',                 'deny'),
 (f'^/var/lib/apt/lists/({Any})\.yml\.gz$',                                          '*',                     None),
-(f'^{user_share}/yelp/storage/({Any})/',                                            '*',                     None,                  'owner'),
-(f'^{user_share}/yelp/storage/[^/]+/({Any})/',                                      '*',                     None,                  'owner'),
+#(f'^{user_share}/yelp/storage/({Any})/',                                            '*',                     None,                  'owner'),
+#(f'^{user_share}/yelp/storage/[^/]+/({Any})/',                                      '*',                     None,                  'owner'),
  # Capturing *any* goes above
 (f'^{Bin}/(|e|f)grep$',                                                             '{,e,f}',                None),
 (f'^{Bin}/(|g|m)awk$',                                                              '{,g,m}',                None),
@@ -89,103 +112,153 @@ def adaptFilePath(l, key, ruleStyle):
 (f'^{Bin}/python3\.(\d+)',                                                          '[0-9]{,[0-9]}',        '@{int}'),
 (f'^{Bin}/which(|\.debianutils)$',                                                  '{,.debianutils}',       None),
 (f'^{Bin}/ldconfig(|\.real)$',                                                      '{,.real}',              None),
+(f'^/{oUsr}(?:local/)?lib/python3\.(\d+)/',                                         '[0-9]{,[0-9]}',        '@{int}'),
 (f'^/usr/share/gtk-([2-4])\.0/',                                                    '[2-4]',                 None),
-(f'^/etc/apparmor\.d/libvirt/libvirt-({uuid})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^/usr/share/icu/(\d+)\.',                                                        '[0-9]*',               '@{int}'),
+(f'^/usr/share/icu/{ints}\.(\d+)/',                                                 '[0-9]*',               '@{int}'),
+(f'^/{oUsr}lib/kde(|3|4)/',                                                         '{,3,4}',                None),
+(f'^/etc/apparmor\.d/libvirt/libvirt-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (f'^/etc/gdm({o3})/',                                                               '{,3}',                  None),
 (f'^/etc/gtk-([2-4])\.0/',                                                          '[2-4]',                 None),
-(f'^/var/log/journal/({md5})/',                                                     '[0-9a-f]*[0-9a-f]',    '@{md5}'),
-(f'^/var/log/journal/{md5}/user-{users}@({md5})-',                                  '[0-9a-f]*[0-9a-f]',    '@{md5}'), # '@' is a string
-(f'^/var/log/journal/{md5}/system@({md5})-',                                        '[0-9a-f]*[0-9a-f]',    '@{md5}'), # '@' is a string
-(f'^/var/log/journal/{md5}/user-{users}@{md5}-({hexes16}-{hexes16})\.',             '*',                     None),    # '@' is a string
-(f'^/var/log/journal/{md5}/system@{md5}-({hexes16}-{hexes16})\.',                   '*',                     None),    # '@' is a string
-(f'^/var/lib/btrfs/scrub\.progress\.({uuid})$',                                     '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/var/lib/btrfs/scrub\.status\.({uuid})(?:|_tmp)$',                              '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/var/lib/cni/results/cni-loopback-({uuid})-lo$',                                '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^/etc/python3\.(\d+)/',                                                          '[0-9]{,[0-9]}',        '@{int}'),
+(f'^/var/cache/fontconfig/({hex32C})-',                                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(f'^/var/cache/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',               '??????',               '@{rand6}',             'owner'),
+(f'^/var/cache/fontconfig/({uuidC})-',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^/var/log/journal/({hex32C})/',                                                  '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
+(f'^/var/log/journal/{hex32}/system@({hex16}-{hex16C})\.',                          '*',                     None),      # '@' is a string
+(f'^/var/log/journal/{hex32}/system@({hex32C})-',                                   '[0-9a-f]*[0-9a-f]',    '@{hex32}'), # '@' is a string
+(f'^/var/log/journal/{hex32}/system@{hex32}-({hex16}-{hex16C})\.',                  '*',                     None),      # '@' is a string
+(f'^/var/log/journal/{hex32}/user-{users}@({hex32C})-',                             '[0-9a-f]*[0-9a-f]',    '@{hex32}'), # '@' is a string
+(f'^/var/log/journal/{hex32}/user-{users}@{hex32}-({hex16}-{hex16C})\.',            '*',                     None),      # '@' is a string
+(f'^/var/log/Xorg\.(\d+)\.',                                                        '[0-9]*',               '@{int}',               'owner'),
+(f'^/var/lib/btrfs/scrub\.progress\.({uuidC})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^/var/lib/btrfs/scrub\.status\.({uuidC})(?:_tmp)?$',                             '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^/var/lib/cni/results/cni-loopback-({uuidC})-lo$',                               '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (f'^/var/lib/ca-certificates/openssl/({random8}).\d+$',                             '????????',             '@{rand8}'),
+(f'^/var/lib/update-notifier/tmp\.({random10})$',                                   '??????????',           '@{rand10}'),
 (f'^@?/var/lib/gdm({o3})/',                                                         '{,3}',                  None),
 (f'^@?/var/lib/gdm{o3}/\.cache/ibus/dbus-({random8})$',                             '????????',             '@{rand8}'),
 (f'^/var/lib/gdm{o3}/\.cache/gstreamer-(\d+)$',                                     '[0-9]*',               '@{int}'),
-(f'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/({hexes2})/',                        '[0-9a-f][0-9a-f]',     '@{h}@{h}'),
-(f'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/{hexes2}/({hexes38})(?:|\.tmp)$',    '[0-9a-f]*[0-9a-f]',    '@{hex}'),
-(f'^/var/lib/gdm{o3}/\.config/ibus/bus/({md5})-',                                   '[0-9a-f]*[0-9a-f]',    '@{md5}'),
-#(f'^/var/lib/gdm{o3}/\.config/ibus/bus/{md5}-unix({oWayland})-{ints}$',             '{,-wayland}',           None),
-(f'^/var/lib/gdm{o3}/\.config/ibus/bus/{md5}-unix{oWayland}-({ints})$',             '[0-9]*',               '@{int}'),
-(f'^/var/lib/kubelet/pods/({uuid})/',                                               '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/var/lib/libvirt/swtpm/({uuid})/',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/({hex2C})/',                         '[0-9a-f][0-9a-f]',     '@{h}@{h}'),
+(f'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',       '[0-9a-f]*[0-9a-f]',    '@{hex}'),   # temp pair? TODO
+(f'^/var/lib/gdm{o3}/\.config/ibus/bus/({hex32C})-',                                '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
+#(f'^/var/lib/gdm{o3}/\.config/ibus/bus/{hex32}-unix({oWayland})-{ints}$',           '{,-wayland}',           None),
+(f'^/var/lib/gdm{o3}/\.config/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',              '[0-9]*',               '@{int}'),
+(f'^/var/lib/gdm{o3}/\.local/share/xorg/Xorg\.(\d+)\.',                             '[0-9]*',               '@{int}'),
+(f'^/var/lib/kubelet/pods/({uuidC})/',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^/var/lib/libvirt/swtpm/({uuidC})/',                                             '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (f'^{homes}/xauth_({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
-(f'^({user_cache})/',                                                                None,                  '@{user_cache_dirs}',   'owner'),
-(f'^({user_config})/',                                                               None,                  '@{user_config_dirs}',  'owner'),
-(f'^{user_cache}/fontconfig/({md5})-',                                              '[0-9a-f]*[0-9a-f]',    '@{md5}',               'owner'),
-(f'^{user_cache}/fontconfig/{md5}-le64\.cache-\d+\.TMP-({random6})$',               '??????',               '@{rand6}',             'owner'),
-(f'^{user_cache}/gnome-software/icons/({hexes38})-',                                '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
-(f'^{user_cache}/gstreamer-({ints})/',                                              '[0-9]*',               '@{int}',               'owner'),
-(f'^{user_cache}/event-sound-cache\.tdb\.({md5})\.',                                '[0-9a-f]*[0-9a-f]',    '@{md5}',               'owner'),
-(f'^{user_cache}/mesa_shader_cache/({hexes2})/',                                    '[0-9a-f][0-9a-f]',     '@{h}@{h}',             'owner'),
-(f'^{user_cache}/mesa_shader_cache/{hexes2}/({hexes38})(?:|\.tmp)$',                '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
-(f'^{user_cache}/thumbnails/[^/]+/({md5}).png',                                     '*',                    '@{md5}',               'owner'),
-(f'^{user_cache}/thumbnails/fail/gnome-thumbnail-factory/({md5}).png',              '*',                    '@{md5}',               'owner'),
+(f'^({user_cacheC})/',                                                               None,                  '@{user_cache_dirs}',   'owner'),
+(f'^({user_configC})/',                                                              None,                  '@{user_config_dirs}',  'owner'),
+(f'^{user_cache}/fontconfig/({hex32C})-',                                           '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(f'^{user_cache}/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',             '??????',               '@{rand6}',             'owner'),
+(f'^{user_cache}/fontconfig/({uuidC})-',                                            '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^{user_cache}/gnome-software/icons/({hex38C})-',                                 '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
+(f'^{user_cache}/gstreamer-(\d+)/',                                                 '[0-9]*',               '@{int}',               'owner'),
+(f'^{user_cache}/event-sound-cache\.tdb\.({hex32C})\.',                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(f'^{user_cache}/mesa_shader_cache/({hex2C})/',                                     '[0-9a-f][0-9a-f]',     '@{h}@{h}',             'owner'),
+(f'^{user_cache}/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',                   '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'), # temp pair? TODO
+(f'^{user_cache}/thumbnails/[^/]+/({hex32C}).png',                                  '*',                    '@{hex32}',             'owner'),
+(f'^{user_cache}/thumbnails/fail/gnome-thumbnail-factory/({hex32C}).png',           '*',                    '@{hex32}',             'owner'),
 (f'^@?{user_cache}/ibus/dbus-({random8})$',                                         '????????',             '@{rand8}',             'owner'),
 (f'^{user_config}/#(\d+)$',                                                         '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^{user_config}/ibus/bus/({md5})-',                                               '[0-9a-f]*[0-9a-f]',    '@{md5}',               'owner'),
-#(f'^{user_config}/ibus/bus/{md5}-unix({oWayland})-{ints}$',                         '{,-wayland}',           None,                  'owner'),
-(f'^{user_config}/ibus/bus/{md5}-unix{oWayland}-({ints})$',                         '[0-9]*',               '@{int}',               'owner'),
+(f'^{user_config}/ibus/bus/({hex32C})-',                                            '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+#(f'^{user_config}/ibus/bus/{hex32}-unix({oWayland})-{ints}$',                       '{,-wayland}',           None,                  'owner'),
+(f'^{user_config}/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',                          '[0-9]*',               '@{int}',               'owner'),
+(f'^{user_config}/vlc/vlcrc\.(\d+)$',                                               '[0-9]*',               '@{int}',               'owner'),
+(f'^{user_config}/vlc/vlc-qt-interface\.conf(|\.{random6})$',                       '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
+(f'^{user_config}/qBittorrent/\.({random6})/',                                      '??????',               '@{rand6}',             'owner'),
+(f'^{user_config}/qBittorrent/qBittorrent-data\.conf(|\.{random6})$',               '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
+(f'^{user_config}/QtProject\.conf(|\.{random6})$',                                  '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
 (f'^{user_share}/gvfs-metadata/root-({random8})\.log$',                             '????????',             '@{rand8}',             'owner'),
 (f'^{user_share}/kcookiejar/cookies\.({random6})$',                                 '??????',               '@{rand6}',             'owner'),
-(f'^@/tmp/\.X11-unix/X(\d+)$',                                                      '[0-9]*',               '@{int}'),
-(f'^@/tmp/\.ICE-unix/(\d+)$',                                                       '[0-9]*',               '@{int}'),
-(f'^@/tmp/dbus-({random8})$',                                                       '????????',             '@{rand8}' ,            'owner'),
-(f'^@/tmp/xauth_({random6})(?:|-c|-l)$',                                            '??????',               '@{rand6}',             'owner'),
+(f'^@?/tmp/\.X11-unix/X(\d+)$',                                                     '[0-9]*',               '@{int}',               'owner'),
+(f'^@?/tmp/\.ICE-unix/(\d+)$',                                                      '[0-9]*',               '@{int}'),
+(f'^@?/tmp/dbus-({random8})$',                                                      '????????',             '@{rand8}' ,            'owner'),
+(f'^@?/tmp/dbus-({random10})$',                                                     '??????????',           '@{rand10}' ,           'owner'),
+(f'^@?/tmp/xauth_({random6})(?:-c|-l)?$',                                           '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/\.dotnet/shm/session(\d+)/',                                               '[0-9]*[0-9]',          '@{int}',               'owner'),
+(f'^/tmp/\.coreclr\.({random6})/',                                                  '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/\.gnome_desktop_thumbnail\.({random6})$',                                  '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/\.xfsm-ICE-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/\.t?X(\d+)-',                                                              '[0-9]*',               '@{int}',               'owner'),
 (f'^/tmp/apt-changelog-({random6})/',                                               '??????',               '@{rand6}',             'owner'),
 (f'^/tmp/apt-changelog-{random6}/\.apt-acquire-privs-test\.({random6})$',           '??????',               '@{rand6}',             'owner'),
 (f'^/tmp/apt\.data\.({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/apt-dpkg-install-({random6})/',                                            '??????',               '@{rand6}',             'owner'),
 (f'^/tmp/apt-key-gpghome\.({random10})/',                                           '??????????',           '@{rand10}',            'owner'),
-(f'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x({hexes16})\.',                         '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
-(f'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x{hexes16}\.debian-stable\.(\d+)x?$',    '[0-9]*[0-9]',          '@{int}',               'owner'),
+(f'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x({hex16C})\.',                          '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
+(f'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x{hex16}\.debian-stable\.(\d+)x?$',      '[0-9]*[0-9]',          '@{int}',               'owner'),
 (f'^/tmp/aurules\.({random8})$',                                                    '????????',             '@{rand8}',             'owner'),
+(f'^/tmp/clr-debug-pipe-(\d+)-',                                                    '[0-9]*[0-9]',          '@{int}',               'owner'),
+(f'^/tmp/clr-debug-pipe-{ints}-(\d+)-',                                             '[0-9]*[0-9]',          '@{int}',               'owner'),
+(f'^/tmp/config-err-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/dotnet-diagnostic-(\d+)-',                                                 '[0-9]*[0-9]',          '@{int}',               'owner'),
+(f'^/tmp/dotnet-diagnostic-{ints}-(\d+)-',                                          '[0-9]*[0-9]',          '@{int}',               'owner'),
+(f'^/tmp/dpkg\.({random6})/',                                                       '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/gdkpixbuf-xpm-tmp\.({random6})$',                                          '??????',               '@{rand6}' ,            'owner'),
+(f'^/tmp/\.gnome_desktop_thumbnail.({random6})$',                                   '??????',               '@{rand6}' ,            'owner'),
 (f'^/tmp/kcminit\.({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/talpid-openvpn-({uuid})$',                                                 '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^/tmp/Temp-({uuid})/',                                                           '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^/tmp/Mozilla({uuidC})-',                                                        '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^/tmp/Mozilla{literalBackslash}{{({uuidC}){literalBackslash}}}-',                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^/tmp/talpid-openvpn-({uuidC})$',                                                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^/tmp/Temp-({uuidC})/',                                                          '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
 (f'^/tmp/tmp\.({random10})/',                                                       '??????????',           '@{rand10}',            'owner'),
 (f'^/tmp/tmp({random8})/',                                                          '????????',             '@{rand8}',             'owner'),
+(f'^/tmp/server-(\d+)\.',                                                           '[0-9]*',               '@{int}'),
 (f'^/tmp/sort({random6})$',                                                         '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/systemd-private-({md5})-',                                                 '[0-9a-f]*[0-9a-f]',    '@{md5}',               'owner'),
-(f'^/tmp/systemd-private-{md5}-[^/]+\.service-({random6})/',                        '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/({uuid})$',                                                                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^/tmp/systemd-private-({hex32C})-',                                              '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(f'^/tmp/systemd-private-{hex32}-[^/]+\.service-({random6})/',                      '??????',               '@{rand6}',             'owner'),
+(f'^/tmp/({uuidC})$',                                                               '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(f'^/tmp/zabbix_server_({random6})$',                                               '??????',               '@{rand6}',             'owner'),
 (f'^{run}/gdm({o3})/',                                                              '{,3}',                  None),
-(f'^{run}/log/journal/({md5})/',                                                    '[0-9a-f]*[0-9a-f]',    '@{md5}'),
-(f'^{run}/netns/cni-({uuid})$',                                                     '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{run}/NetworkManager/nm-openvpn-({uuid})$',                                     '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^{run}/log/journal/({hex32C})/',                                                 '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
+(f'^{run}/netns/cni-({uuidC})$',                                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^{run}/NetworkManager/nm-openvpn-({uuidC})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (f'^{run}/systemd/seats/seat(\d+)$',                                                '[0-9]*',               '@{int}'),
 (f'^{run}/systemd/netif/links/(\d+)$',                                              '[0-9]*',               '@{int}'),
-(f'^{run}/systemd/sessions/(.+)\.ref$',                                             '*',                     None),
+(f'^{run}/systemd/(?:sessions|inhibit)/(.+)\.ref$',                                 '*',                     None),
+(f'^{run}/snapper-tools-({random6})/',                                              '??????',               '@{rand6}',             'owner'),
+(f'^{run}/user/{users}/\.dbus-proxy/[a-z]+-bus-proxy-({random6})$',                 '??????',               '@{rand6}',             'owner'),
 (f'^{run}/user/{users}/at-spi/bus_(\d+)$',                                          '[0-9]*',               '@{int}',               'owner'),
 (f'^{run}/user/{users}/discover({random6})\.',                                      '??????',               '@{rand6}'),
 (f'^{run}/user/{users}/kmozillahelper({random6})\.',                                '??????',               '@{rand6}',             'owner'),
 (f'^{run}/user/{users}/kmozillahelper{random6}\.(\d+)\.',                           '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^{run}/user/{users}/wayland-(\d+)$',                                             '[0-9]*',               '@{int}',               'owner'),
+(f'^{run}/user/{users}/wayland-(\d+)(?:\.lock)?$',                                  '[0-9]*',               '@{int}',               'owner'),
+(f'^{run}/user/{users}/webkitgtk/[a-z]+-proxy-({random6})$',                        '??????',               '@{rand6}',             'owner'),
 (f'^{run}/user/{users}/xauth_({random6})$',                                         '??????',               '@{rand6}',             'owner'),
-(f'^{sys}/bus/pci/slots/({ints})/',                                                 '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/pci\d+:\d+/({pciAddr})/',                                         '????:??:??.?',          None),
-(f'^{sys}/devices/pci\d+:\d+/{pciAddr}/({pciAddr})/',                               '????:??:??.?',          None),
-(f'^{sys}/devices/pci\d+:\d+/{pciAddr}/drm/card({ints})/',                          '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/pci\d+:\d+/{pciAddr}/drm/card{ints}/metrics/({uuid})/',           '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{sys}/devices/pci(\d+:\d+)/',                                                   '[0-9]*',                None), # after previous
-(f'^{sys}/devices/system/cpu/cpu({ints})/',                                         '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/system/cpu/cpufreq/policy({ints})/',                              '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/system/node/node({ints})/',                                       '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/virtual/hwmon/hwmon({ints})/',                                    '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/virtual/block/dm-({ints})/',                                      '[0-9]*',               '@{int}'),
-(f'^{sys}/fs/btrfs/({uuid})/',                                                      '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{sys}/firmware/efi/efivars/[^/]+-({uuid})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{sys}/kernel/iommu_groups/({ints})/',                                           '[0-9]*',               '@{int}'),
-(f'^{proc}/{pids}/fdinfo/({ints})$',                                                '[0-9]*',               '@{int}',               'owner'),
+(f'^{run}/user/{users}/pipewire-(\d+)$',                                            '[0-9]*',               '@{int}',               'owner'),
+(f'^{sys}/bus/pci/slots/(\d+)/',                                                    '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/{pciBus}/({pciIdC})/',                                            '????:??:??.?',         '@{pci_id}'),
+(f'^{sys}/devices/{pciBus}/{pciId}/({pciIdC})/',                                    '????:??:??.?',         '@{pci_id}'),
+(f'^{sys}/devices/{pciBus}/{pciId}/[^/]+/host(\d+)/',                               '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/{pciBus}/{pciId}/(?:{pciId}/)?drm/card(\d+)/',                    '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/{pciBus}/{pciId}/(?:{pciId}/)?drm/card{ints}/metrics/({uuidC})/', '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^{sys}/devices/pci({pciBusC})/',                                                 '????:??',               None),
+(f'^{sys}/devices/({pciBusC})/',                                                     None,                  '@{pci_bus}'),
+(f'^{sys}/devices/platform/serial\d+/tty/ttyS?(\d+)/',                              '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/system/cpu/cpu(\d+)/',                                            '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/system/cpu/cpufreq/policy(\d+)/',                                 '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/system/memory/memory(\d+)/',                                      '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/system/node/node(\d+)/',                                          '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/virtual/tty/tty(\d+)/',                                           '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/virtual/hwmon/hwmon(\d+)/',                                       '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/virtual/block/dm-(\d+)/',                                         '[0-9]*',               '@{int}'),
+(f'^{sys}/devices/virtual/vc/[a-z]+(\d+)/',                                         '[0-9]*',               '@{int}'),
+(f'^{sys}/fs/btrfs/({uuidC})/',                                                     '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^{sys}/firmware/efi/efivars/[^/]+-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(f'^{sys}/kernel/iommu_groups/(\d+)/',                                              '[0-9]*',               '@{int}'),
+(f'^{proc}/{pids}/fdinfo/(\d+)$',                                                   '[0-9]*',               '@{int}',               'owner'),
 (f'^{proc}/sys/net/ipv(4|6)/',                                                      '{4,6}',                 None),
-(f'^{proc}/irq/({ints})/',                                                          '[0-9]*',               '@{int}'),
-(f'^/dev/cpu/({ints})/',                                                            '[0-9]*',               '@{int}'),
+(f'^{proc}/irq/(\d+)/',                                                             '[0-9]*',               '@{int}'),
+(f'^/dev/cpu/(\d+)/',                                                               '[0-9]*',               '@{int}'),
 (f'^/dev/dri/card(\d+)$',                                                           '[0-9]*',               '@{int}'),
 (f'^/dev/input/event(\d+)$',                                                        '[0-9]*',               '@{int}'),
 (f'^/dev/media(\d+)$',                                                              '[0-9]*',               '@{int}'),
 (f'^/dev/pts/(\d+)$',                                                               '[0-9]*',               '@{int}',               'owner'),
+(f'^/dev/shm/sem\.({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
+(f'^/dev/shm/sem\.mp-(\w+)$',                                                       '????????',              None,                  'owner'),
+(f'^/dev/shm/dunst-({random6})$',                                                   '??????',               '@{rand6}',             'owner'),
 (f'^/dev/tty(\d+)$',                                                                '[0-9]*',               '@{int}',               'owner'),
 (f'^/dev/ttyS(\d+)$',                                                               '[0-9]*',               '@{int}',               'owner'),
 (f'^/dev/vfio/(\d+)$',                                                              '[0-9]*',               '@{int}'),
@@ -199,20 +272,25 @@ def adaptFilePath(l, key, ruleStyle):
 (f'/blkid\.tab-({random6})$',                                                       '??????',               '@{rand6}'),
 (f'/nvidia-xdriver-({random8})$',                                                   '????????',             '@{rand8}'),
 (f'/socket-({random8})$',                                                           '????????',             '@{rand8}'),
-(f'/pulse/({md5})-runtime(?:|\.tmp)$',                                              '[0-9a-f]*[0-9a-f]',    '@{md5}'),
+(f'/pulse/({hex32C})-runtime(?:\.tmp)?$',                                           '[0-9a-f]*[0-9a-f]',    '@{hex32}'),  # temp pair? TODO
+(f'/({random6})\.(?:tmp|TMP)$',                                                     '??????',               '@{rand6}',             'owner'),
+(f'/({random8})\.(?:tmp|TMP)$',                                                     '????????',             '@{rand8}',             'owner'),
+(f'/({random10})\.(?:tmp|TMP)$',                                                    '??????????',           '@{rand10}',            'owner'),
 (f'^(/home/{Any})/',                                                                '@{HOME}',               None,                  'owner'), # before the last; tunable isn't matching unix lines
 (f'^@/home/({Any})/',                                                               '*',                     None,                  'owner'), # last; fallback for unix lines
-(f'^(/{usr}lib(?:|exec|32|64))/',                                                    None,                  '@{lib}'),  # last <3
+(f'^(/{oUsr}lib(?:exec|32|64)?)/',                                                   None,                  '@{lib}'),  # last <3
 (f'^({BinC})/',                                                                      None,                  '@{bin}'),  # last <3
-(f'^/({usr}s)bin/',                                                                 '{,usr/}{,s}',           None),     # last <3 (to match unhandled)
-(f'^/({usr}local/)bin',                                                             '{,usr/}{,local/}',      None),     # last <3
-(f'^/(|usr/)bin/',                                                                  '{,usr/}',               None),     # last <3
-(f'^/(|usr/)lib/',                                                                  '{,usr/}',               None),     # last <3
+(f'^/({oUsr}s)bin/',                                                                '{,usr/}{,s}',           None),     # last <3 (to match unhandled)
+(f'^/({oUsr}local/)bin',                                                            '{,usr/}{,local/}',      None),     # last <3
+(f'^/({oUsrC})bin/',                                                                '{,usr/}',               None),     # last <3
+(f'^/({oUsrC})lib/',                                                                '{,usr/}',               None),     # last <3
     ]
     tunables = [  # default tunables only
-#(f'^/{usr}lib/({multiarch})/',                                                      '@{multiarch}',          None),
+(f'^/{oUsr}lib/({multiarchC})/',                                                    '@{multiarch}',          None),
 (f'^({etc_ro})/',                                                                   '@{etc_ro}',             None),
-(f'^/var/log/journal/{md5}/user-({users})(?:@|\.)',                                 '@{uid}',                None),
+(f'^/dev/shm/lttng-ust-wait-{ints}-({usersC})$',                                    '@{uid}',                None,                  'owner'),
+(f'^/var/log/journal/{hex32}/user-({usersC})(?:@|\.)',                              '@{uid}',                None),
+(f'^/var/log/Xorg\.pid-({pidsC})\.',                                                '@{pid}',                None,                  'owner'),
 (f'^{homes}/(Desktop)/',                                                            '@{XDG_DESKTOP_DIR}',    None,                  'owner'),
 (f'^{homes}/(Downloads)/',                                                          '@{XDG_DOWNLOAD_DIR}',   None,                  'owner'),
 (f'^{homes}/(Templates)/',                                                          '@{XDG_TEMPLATES_DIR}',  None,                  'owner'),
@@ -222,16 +300,18 @@ def adaptFilePath(l, key, ruleStyle):
 (f'^{homes}/(Pictures)/',                                                           '@{XDG_PICTURES_DIR}',   None,                  'owner'),
 (f'^{homes}/(Videos)/',                                                             '@{XDG_VIDEOS_DIR}',     None,                  'owner'),
 (f'^({user_shareC})/',                                                              '@{user_share_dirs}',    None,                  'owner'),
-(f'^({run})/',                                                                      '@{run}',                None),
-(f'^{run}/user/({users})/',                                                         '@{uid}',                None,                  'owner'),
-(f'^{run}/systemd/users/({users})$',                                                '@{uid}',                None),
-(f'^({sys})/',                                                                      '@{sys}',                None),
-(f'^{sys}/fs/cgroup/user\.slice/user-({users})\.',                                  '@{uid}',                None),
-(f'^{sys}/fs/cgroup/user\.slice/user-{users}\.slice/user@({users})\.',              '@{uid}',                None), # '@' is a string
-(f'^({proc})/',                                                                     '@{PROC}',               None),
-(f'^{proc}/({pids})/',                                                              '@{pid}',                None,                  'owner'),
-(f'^{proc}/{pids}/task/({tids})/',                                                  '@{tid}',                None,                  'owner'),
-(f'^/tmp/tracker-extract-3-files.({users})/',                                       '@{uid}',                None,                  'owner'),
+(f'^({runC})/',                                                                     '@{run}',                None),
+(f'^{run}/user/({usersC})/',                                                        '@{uid}',                None,                  'owner'),
+(f'^{run}/systemd/users/({usersC})$',                                               '@{uid}',                None),
+(f'^({sysC})/',                                                                     '@{sys}',                None),
+(f'^{sys}/fs/cgroup/user\.slice/user-({usersC})\.',                                 '@{uid}',                None),
+(f'^{sys}/fs/cgroup/user\.slice/user-{users}\.slice/user@({usersC})\.',             '@{uid}',                None),  # '@' is a string
+(f'^({procC})/',                                                                    '@{PROC}',               None),
+(f'^{proc}/({pidsC})/',                                                             '@{pid}',                None,                  'owner'),
+(f'^{proc}/{pids}/task/({tidsC})/',                                                 '@{tid}',                None,                  'owner'),
+(f'^/tmp/tracker-extract-3-files.({usersC})/',                                      '@{uid}',                None,                  'owner'),
+(f'^/tmp/user/({usersC})/',                                                         '@{uid}',                None,                  'owner'),
+(f'^/tmp/user/{users}/Temp-({uuidC})/',                                             '@{uuid}',               None,                  'owner'),
     ]
     lineType = findLineType(l)
     if lineType != 'UNIX':
@@ -243,6 +323,19 @@ def adaptFilePath(l, key, ruleStyle):
     if hexToString_Out != path:  # changed
         path = hexToString_Out
         l[key] = path
+
+    # Backslash special characters after decoding and before PCRE replacement
+    pcreChars = (']', '[', '*', '}', '{', '?', '^')  # literal backslashes aren't handled
+    for i in pcreChars:
+        occurences = range(l.get(key).count(i))
+        for j in occurences:
+            regexp = f'(?<!{literalBackslash})()\\{i}'  # do not match already escaped
+            subGroup = substituteGroup(l.get(key), '\\', regexp)
+            if subGroup[0]:
+                resultPath = subGroup[0]
+                subSpan = subGroup[1]
+                l[key] = resultPath
+                updatePostcolorizationDiffs(l, subSpan, '', key)
 
     # Attempt to substitute matches in path one by one
     for t in regexpToMacro:
@@ -264,9 +357,7 @@ def adaptFilePath(l, key, ruleStyle):
         elif lineType == 'UNIX':
             macro = d
 
-        elif ruleStyle == 'roddhjav/apparmor.d' and \
-             a:
-
+        elif ruleStyle == 'AppArmor.d' and a:
             macro = a
 
         else:
@@ -290,26 +381,27 @@ def adaptDbusPaths(lines, ruleStyle):
     # First capture but not (second) match; 'C' for capture
     Any    = '(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
     usersC = '(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'
-    md5C   = '(?:[0-9a-fA-F]{32})'
+    hex32C = '(?:[0-9a-fA-F]{32})'
     uuidC  = '(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})'
     regexpToMacro = [
  # regex                                              # default  # apparmor.d
 (f'^/org/freedesktop/ColorManager/devices/({Any})$',  '*',       None),
+(f'^/org/freedesktop/login1/session/({Any})$',        '*',       None),
+(f'^/org/freedesktop/systemd1/unit/({Any})$',         '*',       None),
 (f'^/org/freedesktop/UDisks2/drives/({Any})$',        '*',       None),
 (f'^/org/freedesktop/UDisks2/block_devices/({Any})$', '*',       None),
-(f'^/org/freedesktop/systemd1/unit/({Any})$',         '*',       None),
-(f'^/org/freedesktop/login1/session/({Any})$',        '*',       None),
+(f'^/org/freedesktop/UPower/devices/({Any})$',        '*',       None),
  # Capturing *any* goes above
 (f'/User({usersC})(?:/|$)',                           '@{uid}',  None),
 (f'/({uuidC})(?:/|$)',                                '*',       '@{uuid}'),
-(f'/icc_({md5C})$',                                   '*',       '@{md5}'),
+(f'/icc_({hex32C})$',                                 '*',       '@{hex32}'),
 (f'/(\d+)$',                                          '[0-9]*',  '@{int}'),
 (f'/(\d+)/',                                          '[0-9]*',  '@{int}'),  # separate to mitigate overlaping
 (f'/_(\d+)$',                                         '[0-9]*',  '@{int}'),
-(f'/Source_(\d+)(?:/|$)',                             '[0-9]*',  '@{int}'),
 (f'/Client(\d+)(?:/|$)',                              '[0-9]*',  '@{int}'),
 (f'/ServiceBrowser(\d+)(?:/|$)',                      '[0-9]*',  '@{int}'),
 (f'/seat(\d+)$',                                      '[0-9]*',  '@{int}'),
+(f'/Source_(\d+)(?:/|$)',                             '[0-9]*',  '@{int}'),
 (f'/prompt/u(\d+)$',                                  '[0-9]*',  '@{int}'),
 (f'/Prompt/p(\d+)$',                                  '[0-9]*',  '@{int}'),
 (f'/loop(\d+)$',                                      '[0-9]*',  '@{int}'),  # unreachable?
@@ -324,7 +416,7 @@ def adaptDbusPaths(lines, ruleStyle):
                 continue
 
             for r,d,a in regexpToMacro:
-                if ruleStyle == 'roddhjav/apparmor.d' and a:
+                if ruleStyle == 'AppArmor.d' and a:
                     macro = a
                 else:
                     macro = d
@@ -359,7 +451,7 @@ def findTempTailPair(filename, ruleStyle):
         suffixRe = re.search(r, filename)
         if suffixRe:
             tempTail = suffixRe.group(0)
-            if ruleStyle == 'roddhjav/apparmor.d' and a:
+            if ruleStyle == 'AppArmor.d' and a:
                 macro = a
             else:
                 macro = d
@@ -376,27 +468,31 @@ def highlightWords(string_, isHighlightVolatile=True):
        Volatile is for those paths which could not be unequivocally normalized
        Repeating, non-positional patterns must be greedy
        Capturing group is the highlight'''
+
+    ignorePath = '/usr/share'
+
     sensitivePatterns = (  # with Red; re.I
         '/\.ssh/(id[^.]+)(?!.*\.pub)(?:/|$)',
         '/(ssh_host_[^/]+_key(?:[^.]|))(?!.*\.pub)',
-        '(?<!pubring\.orig\.)(?<!pubring\.)(?<!mouse)(?<!turn|whis|flun|dove|alar|rick|apt-|gtk-)(?<!hoc|don|mon|tur|coc|joc|lac|buc|soc|haw|pun|tac|flu|dar|sna|smo|cri|coo|pin|din|dic)(?<!ca|mi)(key)(?!button|stroke|board|punch|less|code|pal|pad|gen|\.pub|word\.cpython|-manager-qt_ykman.png|-personalization-gui.png|-personalization-gui_yubikey-personalization-gui.png)', # only key; NOT: turkey, keyboard, keygen, etc
-        '(?<!grass|snake|birth|colic|coral|arrow|blood|orris|bread|squaw|fever|itter|inger)(?<!worm|alum|rose|club|pink|beet|poke|musk|fake)(?<!tap|che|red|she)(?<!sc|ch)(root)(?!stalk|worm|stock|less|s)', # only root; NOT: grassroots, rootless, chroot, etc
+        '(?<!pubring\.orig\.)(?<!pubring\.)(?<!mouse)(?<!turn|whis|flun|dove|alar|rick|apt-|gtk-)(?<!hot|hoc|don|mon|tur|coc|joc|lac|buc|soc|haw|pun|tac|flu|dar|sna|smo|cri|coo|pin|din|dic)(?<!ca|mi)(key)(?!button|stroke|board|punch|less|code|pal|pad|gen|\.pub|word\.cpython|-manager-qt_ykman\.png|-personalization-gui\.png|-personalization-gui_yubikey-personalization-gui\.png)', # only key; NOT: turkey, keyboard, keygen, etc
+        '(?<!/ISRG_)(?<!grass|snake|birth|colic|coral|arrow|blood|orris|bread|squaw|fever|itter|inger)(?<!worm|alum|rose|club|pink|beet|poke|musk|fake)(?<!tap|che|red|she)(?<!sc|ch)(root)(?!stalk|worm|stock|less|s)', # only root; NOT: grassroots, rootless, chroot, etc
         '(?<!non)(secret)(?!agogue|ion|ary|ari)', # only secret, secrets; NOT: nonsecret, secretary, etc
-        '(?<!non|set)(priv)(?!atdocent|atdozent|iledge|ates|ation|ateer|atise|arize|atist|ation|er|et|es|ed|ie|al|y|e)', # only priv, private; NOT: nonprivate, privatise, etc
-        '(?<!com|sur|out)(pass)(?!epied|erine|enger|along|ible|erby|able|less|band|ivi|ive|age|ade|ion|ed|el|er|wd)', # only pass, password; NOT: compass, passage, etc
-        '(?<!over|fore)(?<!be)(shadow)(?!graph|iest|like|less|ing|ily|ers|box|ier|er|ed|y|s)', # only shadow; NOT: foreshadow, shadows, etc
+        '(?<!non|set)(priv)(?!ate\.CoreLib|atdocent|atdozent|iledge|ates|ation|ateer|atise|arize|atist|ation|er|et|es|ed|ie|al|y|e)', # only priv, private; NOT: nonprivate, privatise, etc
+        '(?<!com|sur|out)(pass)(?!word-symbolic\.svg|epied|erine|enger|along|ible|erby|able|less|band|ivi|ive|age|ade|ion|ed|el|er|wd)', # only pass, password; NOT: compass, passage, etc
+        '(?<!over|fore)(?<!be)(shadow)(?!coord|graph|iest|like|less|map|ing|ily|ers|box|ier|er|ed|y|s)', # only shadow; NOT: foreshadow, shadows, etc
         '(?<!na|sa|ac)(cred)(?!ulous|ulity|uliti|enza|ence|ibl|ibi|al|it|o)', # only cred, creds, credentials; NOT: sacred, credence, etc
         '(?:/|^)(0)(?:/|$)', # standalone zero: 0, /0, /0/; NOT: a0, 0a, 01, 10, 101, etc
         '^(?:/proc|@{PROC})/(1)/',
         '^(?:/proc|@{PROC})(?:/\d+|/@{pids?})?/(cmdline)$',
-        '(cookies)\.sqlite(?:-wal|)$',
+        '(cookies)\.sqlite(?:-wal)?$',
         '(cookiejar)',
         )
-    random6  = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9]|base\d\d|\d{5}x)[0-9a-zA-Z]{6}' # aBcXy9, AbcXyz, abcxy9, ABCXY9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1, base35, 12345x
-    random8  = '(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9])[0-9a-zA-Z]{8}' # aBcDwXy9, AbcdWxyz, abcdwxy9, ABCDWXY9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1
-    random10 = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9]|PackageKit)[0-9a-zA-Z]{10}' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9, ABCDEVWXY9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1, PackageKit
+    random6  = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9]|base\d\d|\d{5}x|sha\d{3}|[a-z]{5}\d|UPower)[0-9a-zA-Z]{6}' # aBcXy9, AbcXyz, ABCXY9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1, base35, 12345x, abcxy9
+    random8  = '(?<!arphic-)(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9]|[a-z]{7}\d|GeoClue\d)[0-9a-zA-Z]{8}' # aBcDwXy9, AbcdWxyz, ABCDWXY9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1, abcdwxy9
+    random10 = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9]|PackageKit|PolicyKit\d)[0-9a-zA-Z]{10}' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9, ABCDEVWXY9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1, PackageKit
     volatilePatterns = (  # with Yellow
         '/#(\d+)$',  # trailing number with leading hash sign
+        '[-./@](1000)(?:/|$)',  # first user id
        f'[-.]({random6})(?:/|$)',
        f'[-.]({random8})(?:/|$)',
        f'[-.]({random10})(?:/|$)',
@@ -413,35 +509,36 @@ def highlightWords(string_, isHighlightVolatile=True):
         '^@?/home/([^/]+)/', # previously unmatched homes
     )
 
-    for r in sensitivePatterns:
-        allSpans = []
-        sensitiveRe = re.finditer(r, string_, re.I)
-        for m in sensitiveRe:
-            allSpans.append(m.span(1))
-
-        # Begin from the end to mitigate colorization shifting
-        allSpans.sort(reverse=True)
-
-        for s in allSpans:
-            string_ = colorizeBySpan(string_, 'Red', s)
-
-    if isHighlightVolatile:
-        for r in volatilePatterns:
+    if not string_.startswith(ignorePath):
+        for r in sensitivePatterns:
             allSpans = []
-            volatileRe = re.finditer(r, string_)
-            for m in volatileRe:
+            sensitiveRe = re.finditer(r, string_, re.I)
+            for m in sensitiveRe:
                 allSpans.append(m.span(1))
- 
+    
+            # Begin from the end to mitigate colorization shifting
             allSpans.sort(reverse=True)
- 
+    
             for s in allSpans:
-                string_ = colorizeBySpan(string_, 'Yellow', s)
+                string_ = colorizeBySpan(string_, 'Red', s)
+    
+        if isHighlightVolatile:
+            for r in volatilePatterns:
+                allSpans = []
+                volatileRe = re.finditer(r, string_)
+                for m in volatileRe:
+                    allSpans.append(m.span(1))
+     
+                allSpans.sort(reverse=True)
+     
+                for s in allSpans:
+                    string_ = colorizeBySpan(string_, 'Yellow', s)
 
     return string_
 
-def adaptProfileAutoTransitions(l):
+def findExecType(path):
 
-    always_ix = { # only for '/usr/bin/' and '/bin/'; not for programs with network access or large scope
+    always_ix = {  # not for programs with network access or large scope
         'awk',                     'nice',                 
         'base64',                  'nproc',
         'basename',                'od',
@@ -485,25 +582,42 @@ def adaptProfileAutoTransitions(l):
         'mktemp',                  'zstd',
         'mv',                      'setfacl',
     }
+    always_Px = {
+        'ps',
+        'spice-vdagent',
+    }
+
+    if   path in always_ix:
+        result = 'i'
+    elif path in always_Px:
+        result = 'P'
+    else:
+        result = None
+
+    return result
+
+def adaptProfileAutoTransitions(l):
 
     # Move automatic transition to the parent
     if '▶' in l.get('profile'):             # only for 'profile'
         split = l.get('profile').split('▶')
-        if split[-1] in always_ix     and \
+        transitionExecType = findExecType(split[-1])
+        if transitionExecType == 'i' and \
            split[-1] == l.get('comm'):      # if present in 'always_ix' and equals to 'comm'
 
             del split[-1]  # delete last automatic transition id
             l['profile'] = '▶'.join(split)  # identify as parent
             l['comm']    = colorize(l.get('comm'), 'Blue')  # colorize imidiately
 
-            if getBaseBin(l.get('name')) in always_ix:
-                l['requested_mask'] += 'I'  # mark as possible 'ix' candidate
+            binExecType = findExecType(getBaseBin(l.get('name')))
+            if binExecType == 'i':
+                l['requested_mask'] += 'i'  # mark as possible 'ix' candidate
 
     return l
 
 def isBaseAbstractionTransition(l, profile_):
     '''Only for file lines. Must be done after normalization and before adaption. Temporary solution?'''
-    multiarch   = '(?:[^/]+-linux-gnu(?:[^/]+|)|@{multiarch})'
+    multiarch   = '(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?|@{multiarch})'
     proc        = '(?:/proc|@{PROC})'
     etc_ro      = '(?:/usr/etc|/etc|@{etc_ro})'
     run         = '(?:/var/run|/run|@{run})'
@@ -571,9 +685,7 @@ def isBaseAbstractionTransition(l, profile_):
     }
 
     result = False
-    if '▶' in profile_   or \
-      isTransitionComm(l.get('comm')):  # transition features
-
+    if '▶' in profile_ or isTransitionComm(l.get('comm')):  # transition features
         path      = l.get('path')
         pathMasks = l.get('mask')
         for regex,mask in baseAbsRules.items():
@@ -586,56 +698,155 @@ def isBaseAbstractionTransition(l, profile_):
                pathMasks.issubset(mask):
  
                 result = True
+                break
 
     return result
 
-def grabLogsByBootId(id_, isKeepStatus):
+def findBootId(positionalId):
 
-    j = journal.Reader()
-    #j.this_boot(bootid=id_)
-    j.this_boot()
+    raise NotImplementedError('Handling previous boot IDs is not yet implemented.')
+
+    return None
+
+def grabJournal(args):
+
+    if not args.keep_status_audit:
+        statusTypes = '(?:AVC |USER_AVC )?apparmor="?(ALLOWED|DENIED)'
+    else:
+        statusTypes = '(?:AVC |USER_AVC )?apparmor="?(ALLOWED|DENIED|AUDIT)'
+
+    disableEpochConvertion = {'__REALTIME_TIMESTAMP': int}
+    j = journal.Reader(converters=disableEpochConvertion)
+    if args.boot_id:
+        hexBootId = findBootId(args.boot_id)
+        j.this_boot(hexBootId)
+    else:
+        j.this_boot()
+
     j.this_machine()
     j.add_match('SYSLOG_IDENTIFIER=kernel',
                 'SYSLOG_IDENTIFIER=audit',
                 'SYSLOG_IDENTIFIER=dbus-daemon')  # try to limit spoofing surface
-    lineDicts = []
+
+    rawLines = []
     for entry in j:
-        if re.search('apparmor="?(ALLOWED|DENIED)', entry['MESSAGE']):
-            processedLine = findLogLine(entry['MESSAGE'], isKeepStatus)
-            if not processedLine in lineDicts:
-                # Ascending order to flag the lowest
-#                if not processedLine.get('operation').startswith('dbus') and \
-#                       entry['SYSLOG_IDENTIFIER'] == 'dbus-daemon':  # came from DBus, but not a DBus line
-#
-#                    processedLine['trust'] = 2
-#
-#                elif entry.get('_AUDIT_TYPE_NAME') == 'USER_AVC':
-#                    processedLine['trust'] = 5
-#
-#                elif processedLine.get('operation').startswith('dbus'):
-#                    processedLine['trust'] = 6
- 
-                lineDicts.append(processedLine)
+        if re.search(statusTypes, entry['MESSAGE']):
+            rawLines.append(entry)
 
-    return lineDicts
+    return rawLines
 
-def findTrustLevels(line):
+def isDbusJournalLine(entry):
+    '''"_SELINUX_CONTEXT" is arbitrary, don't use for higher trusts'''
+    if   entry.get('SYSLOG_IDENTIFIER') == 'dbus-daemon':
+        result = True
+    elif entry.get('_SELINUX_CONTEXT')  == 'dbus-daemon':
+        result = True
+    elif entry.get('_SELINUX_CONTEXT')  == 'dbus-daemon (complain)':
+        result = True
+    elif entry.get('_SELINUX_CONTEXT')  == 'dbus-daemon (complain)\n':
+        result = True
+    else:
+        result = False
 
-    return None
+    return result
 
-def findLogLine(rawLine, isKeepStatus):
-    '''Make dictionary from raw log line'''
+def findLogLines(rawLines, args):
+
+    toDropDbusKeyValues_inLines = {
+        'hostname': '?',
+        'addr':     '?',
+        'terminal': '?',
+        'exe':      '/usr/bin/dbus-daemon',
+    }
+
+    lineDicts = []
+    latestTimestamp = 0
+    trusts_byLine = {}
+    timestamps_byLine = {}
+    for entry in rawLines:
+        normalizedLine = normalizeJournalLine(entry['MESSAGE'], args)
+        processedLine = normalizedLine[0]
+        trust         = normalizedLine[1]  # dirty or None, expected to be overwritten further
+        lineType = findLineType(processedLine)
+        if lineType.startswith('DBUS'):  # drop non-informative DBus data
+            [processedLine.pop(k) for k,v in toDropDbusKeyValues_inLines.items() if processedLine.get(k) == v]
+
+        if not lineType.startswith('DBUS') and isDbusJournalLine(entry):  # came from DBus, but not a DBus line
+            trust = 1
+
+        elif   entry.get('_AUDIT_TYPE_NAME') == 'USER_AVC':
+            if not lineType.startswith('DBUS'):
+                trust = 3
+            else:
+                trust = 8
+
+        elif   entry.get('_AUDIT_TYPE_NAME') == 'AVC':
+            if   isDbusJournalLine(entry) and entry.get('AUDIT_FIELD_BUS') != 'system':
+                trust = 3
+            elif entry.get('AUDIT_FIELD_BUS')  == 'system':
+                trust = 9
+            else:
+                trust = 10  # not necessarily top trust
+
+        elif   isDbusJournalLine(entry):  # not matched previously gets lower trust
+            trust = 7
+
+        elif   lineType.startswith('DBUS'):  # what line itself tells
+            trust = 6
+
+        else: # Finished without falling under other conditions
+            trust = 4
+
+        lineId = makeHashable(processedLine)
+        lineTrust = trusts_byLine.get(lineId)
+        # Only mark to merge if current trust is no less that 4
+        if   trust <= 3:
+            processedLine['trust'] = trust        # assign imidiately to prevent merging
+            lineId = makeHashable(processedLine)  # regenerate the ID
+            trusts_byLine[lineId] = trust
+
+        elif lineTrust:  # duplicate line
+            # Only mark to merge if current trust is higher than trust for previously gathered line
+            if lineTrust <= trust:
+                trusts_byLine[lineId] = trust
+            # Skip reassigning trust for duplicate line if nothing is matched
+        else:  # new line
+            trusts_byLine[lineId] = trust
+
+        timestamps_byLine[lineId] = entry['__REALTIME_TIMESTAMP']
+
+        if processedLine in lineDicts:
+            lineDicts.remove(processedLine)  # always use most recent line
+
+        lineDicts.append(processedLine)
+
+    for l in lineDicts:
+        lineId = makeHashable(l)
+        l['timestamp'] = timestamps_byLine.get(lineId)
+        if trusts_byLine.get(lineId):
+            l['trust'] = trusts_byLine[lineId]
+        else:  # guard
+            l['trust'] = 2
+
+        if l.get('timestamp') > latestTimestamp:
+            latestTimestamp = l.get('timestamp')
+
+    return (lineDicts, latestTimestamp)
+
+def normalizeJournalLine(rawLine, args):
+
     toSkipKeys = {'audit:', 'AVC', 'capability', 'denied_mask', 'ouid', 'sauid', 'fsuid', 'pid', 'peer_pid', 'type', 'class'}
-    if not isKeepStatus:
+    if not args.keep_status:
         toSkipKeys.add('apparmor')
 
     lineList = shlex.split(rawLine)
 
     # Unwrap nested message
+    trust = None
     for i in lineList:
-        if re.match('msg=apparmor="?(ALLOWED|DENIED)', i):
+        if re.match('msg=(?:AVC |USER_AVC )?apparmor="?(ALLOWED|DENIED|AUDIT)', i):  # greedy match, type filtering is handled by grabJournal()
             cleaned = i.removeprefix('msg=').strip()
-#            cleaned += ' trust=4'  # needed? TODO
+            trust = 5
             lineList = shlex.split(cleaned)
             break
 
@@ -654,13 +865,18 @@ def findLogLine(rawLine, isKeepStatus):
         elif key == 'name' and \
              re.match(':\d+\.\d+', val):
 
-            adaptedName = re.sub('\.\d+$', '.[0-9]*', val)
+            if args.style == 'AppArmor.d':
+                pcreStyle = '.@{int}'
+            else:
+                pcreStyle = '.[0-9]*'
+
+            adaptedName = re.sub('\.\d+$', pcreStyle, val)
             lineDict.update({key: adaptedName})
 
         elif val:
             lineDict.update({key: val})
 
-    return lineDict
+    return (lineDict, trust)
 
 def normalizeProfileName(l):
     '''Dealing early with regular operation format (string)'''
@@ -671,10 +887,10 @@ def normalizeProfileName(l):
             l['peer'] = l.pop('peer_label')
 
     # Remove 'target' if it's the same as 'name' (path)
-    delimeter = '//null-'
+    delimiter = '//null-'
     if l.get('target'):
-        if delimeter in l.get('target'):
-            split = l.get('target').split(delimeter)
+        if delimiter in l.get('target'):
+            split = l.get('target').split(delimiter)
             realTarget = split[-1]
             if l.get('name') == realTarget:
                 l.pop('target')
@@ -683,9 +899,9 @@ def normalizeProfileName(l):
     toChangeKeys = ['profile', 'peer', 'target']
     for k in toChangeKeys:
         if l.get(k):
-            if delimeter in l.get(k):
+            if delimiter in l.get(k):
                 profileNames = []
-                split = l.pop(k).split(delimeter)
+                split = l.pop(k).split(delimiter)
                 for p in split:
                     baseName = getBaseBin(p)
                     if baseName:
@@ -701,7 +917,9 @@ def normalizeProfileName(l):
 
 def getBaseBin(path):
 
-    regexp = re.match('^/(?:|usr/)bin/([^/]+)$', path)  # 'sbin' isn't covered
+    grn  = '\x1b\[0;32m' # (escaped) regular green
+    rst  = '\x1b\[0m'    # (escaped) reset
+    regexp = re.match(f'^(?:/(?:usr/|{grn}{{\,usr/}}{rst}|{grn}{{usr/\,}}{rst})?bin|{grn}@{{bin}}{rst})/([^/]+)$', path)  # 'sbin' isn't covered
     if regexp:
         result = regexp.group(1)
     else:
@@ -714,7 +932,7 @@ def composeSuffix(l, keysToHide):
     if 'ALL' in keysToHide:
         l = {}
     elif keysToHide:
-        if '*diffs' in keysToHide:
+        if '*_diffs' in keysToHide:
             toDropKeys = ('path_diffs', 'srcpath_diffs', 'target_diffs', 'addr_diffs', 'peer_addr_diffs')
             keysToHide.extend(toDropKeys)
         [l.pop(k) for k in keysToHide if l.get(k)]
@@ -722,17 +940,25 @@ def composeSuffix(l, keysToHide):
     toDropStalePrefixesKeys = ('path_prefix', 'srcpath_prefix', 'target_prefix', 'addr_prefix', 'peer_addr_prefix')
     [l.pop(k) for k in toDropStalePrefixesKeys if l.get(k)]  # drop prefixes which unrelevant anymore
 
+    keys = sorted(l.keys())
+    if 'addr_diffs' in keys:
+        keys.remove('addr_diffs')
+        keys.append('addr_diffs')
+    l = {i: l[i] for i in keys}
+
     s = ''
     for k,v in l.items():
         if isinstance(v, set):
             if 'file_inherit' in v:
                 v.remove('file_inherit')
-                v.add(colorize('file_inherit', 'Yellow'))
+                v.add(colorize('file_inherit', 'Bright Yellow'))
             v = ','.join(sorted(v))
 
-        if not isinstance(v, int):
+        try:
             if ' ' in v:
                 v = f"'{v}'"
+        except:
+            pass
 
         # Diffs
         if k.endswith('_diffs'):
@@ -766,7 +992,7 @@ def colorize(string_, color, style='0'):
     }
 
     if not color in colorTable:
-        raise ValueError('Incorrect color specified.')
+        raise ValueError('Incorrect color specified: ' + color)
 
     string_ = f'\033[{style};{colorTable[color]}m{string_}\033[0m'
 
@@ -787,8 +1013,6 @@ def highlightSpecialChars(string_):
     '''Better to apply after alignment'''
     charsToColors = {
         '=': 'Bright Blue',
-        #',': 'Blue',  # breaks other colors in the middle; TODO?
-        #'*': 'Red',
         '(': 'Cyan',
         ')': 'Cyan',
         '"': 'Cyan',
@@ -816,7 +1040,7 @@ def hexToString(path_):
     else:
         try:
             path_ = bytes.fromhex(path_).decode('utf-8')
-            while path_.endswith('\x00'):  # trim trailing zeroes ; TODO testing
+            while path_.endswith('\x00'):  # trim trailing zeroes
                 path_ = path_.removesuffix('\x00')
         except:
             pass  # not utf-8
@@ -832,7 +1056,7 @@ def substituteGroup(subWhat, subWith, regexp_):
     whatRe = re.search(regexp_, subWhat)
     if whatRe:
         if   len(whatRe.groups()) == 0 or whatRe.group(1) is None:
-            raise ValueError('No capturing group. Check your regexes.')
+            raise ValueError('No matching capturing group. Check your regexes.')
         elif len(whatRe.groups()) >= 2:
             raise NotImplementedError('More than one capturing group is not supported. Check your regexes.')
         elif subWith == 'owner':
@@ -840,11 +1064,9 @@ def substituteGroup(subWhat, subWith, regexp_):
 #        elif whatRe.group(1).startswith('@{') or \
 #             whatRe.group(1).startswith('{')  or \
 #             whatRe.group(1).startswith('['):
+#            print('Second attempt to capture an already substituted match. This is unnecessary and will lead to malformed diffs. Check your regexes.', file=sys.stderr)
 #            print(whatRe,          file=sys.stderr)
 #            print(whatRe.group(1), file=sys.stderr)
-#            raise ValueError('Second attempt to capture an already substituted match. This is unnecessary and will lead to malformed diffs. Check your regexes.')
-    #    elif not oldDiff:
-    #        raise ValueError('Capturing group is empty! Check your regexes.')  # TODO?
 
         oldDiff = whatRe.group(1)
         span = whatRe.span(1)
@@ -928,8 +1150,11 @@ def findLineType(l):
             operation = e  # other items will be the same type
             break
 
-    if   operation in fileOperations and \
-     not l.get('sock_type'):
+    if not operation:
+        result = 'NONE'
+
+    elif   operation in fileOperations and \
+       not l.get('sock_type'):
 
         result = 'FILE'
 
@@ -968,16 +1193,10 @@ def findLineType(l):
 def composeFileMask(maskSet, transitionMask, isConvertToUsable):
     '''Convert mask set to string, sorting by pattern and highlight special cases.'''
     maskPrecedence = 'mriPUCpuxwadclk'
-    dangerousCombinations = (  # dangerous combinations to highlight
-        ('x', 'wadclk'),
-        ('m', 'wadclk'),
-    )
     toColorize = {}
 
-    is_ix_candidate = False
-    if 'I' in maskSet:  # possible 'ix' candidate
-        maskSet.remove('I')  # remove previous marking
-        is_ix_candidate = True
+    if 'P' in maskSet:
+        toColorize['P'] = ('White', '1')  # bold
 
     if 'N' in maskSet:
         maskSet.remove('N')
@@ -989,11 +1208,9 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
         maskDiff = maskSet.intersection(transitionMask)
         for i in maskDiff:
             toColorize[i] = ('Blue', '0')  # regular
-
-            if is_ix_candidate and \
+            if 'i' in maskSet and \
                'x' in maskSet:
 
-                maskSet.add('i')
                 toColorize['i'] = ('White', '1')  # bold
 
     # Add accompanied masks
@@ -1037,7 +1254,11 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
         suffix = ''.join(sorted(maskSet))
         maskString += suffix
 
-    # Determine what to colorize
+    # Determine what to colorize as dangerous combinations
+    dangerousCombinations = (
+        ('x', 'wadclk'),
+        ('m', 'wadclk'),
+    )
     toReplaceChars = set()
     for s1,s2 in dangerousCombinations:
         if len(s1) >= 2:  # sanity
@@ -1051,10 +1272,10 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
     # Colorize dangerous combinations
     for s in maskString:
         if s in toReplaceChars:
-            highlight = colorize(s, 'Red', '7')  # background
+            highlight = colorize(s, 'Red', 7)  # background
             maskString = maskString.replace(s, highlight)
 
-    # Colorize unpacked items
+    # Final colorization
     for k,v in toColorize.items():
         if k in maskString:
             color      = v[0]
@@ -1074,7 +1295,7 @@ def composeMembers(lines):
                     members = ','.join(membersList)
                     l['member'] = '{%s}' % members
                 elif l.get('member'):
-                    l['member'] = 'BUG'.join(l.pop('member'))
+                    l['member'] = '_BUG_'.join(l.pop('member'))
 
     return lines
 
@@ -1123,12 +1344,14 @@ def mergeDictsBySingleKey(lines, key):
     for profile in lines:
         differences_byId = {}
         suffixes_byId = {}
-        #nestedDifferences_byId = {}
-        #nestedSuffixes_byId = {}
         newLogLines_forProfile = []
         for l in lines[profile]:
             if not l.get(key):
                 newLogLines_forProfile.append(l)  # save non-mergable
+                continue
+
+            if 'file_inherit' in l.get('operation'):
+                newLogLines_forProfile.append(l)
                 continue
 
             diff = l.pop(key)
@@ -1163,9 +1386,14 @@ def mergeDictsByKeyPair(lines, firstKey, secondKey):
         pair_byId = {}
         suffixes_byId = {}
         for l in lines[profile]:
+            #print(l)
             if not l.get(firstKey) or \
                not l.get(secondKey):
                 newLogLines_forProfile.append(l)  # save non-mergable
+                continue
+
+            if 'file_inherit' in l.get('operation'):
+                newLogLines_forProfile.append(l)
                 continue
 
             firstVal  = l.pop(firstKey)
@@ -1204,7 +1432,7 @@ def mergeDictsByKeyPair(lines, firstKey, secondKey):
 
     return newDictOfListsOfLines_byProfile
 
-def mergeDownCommMasks(lines):
+def mergeCommMasks(lines):
     '''Copy of mergeDictsByKeyPair() for merging comms and thier masks'''
     newDictOfListsOfLines_byProfile = {}
     for profile in lines:
@@ -1220,6 +1448,10 @@ def mergeDownCommMasks(lines):
                not l.get(operKey) or \
                not l.get(commKey):
                 newLogLines_forProfile.append(l)  # save non-mergable
+                continue
+
+            if 'file_inherit' in l.get('operation'):
+                newLogLines_forProfile.append(l)
                 continue
 
             firstVal  = l.pop(maskKey)
@@ -1252,6 +1484,12 @@ def mergeDownCommMasks(lines):
             suffix['timestamp'] = timestamp  # use only the latest timestamp for duplicates
             suffixes_byId[lineId] = suffix
 
+        # Handle skipped
+        for l in newLogLines_forProfile:
+            if l.get('comm'):
+                if isTransitionComm(l.get('comm')) and len(l.get('comm')) == 1:
+                    l['transition_mask'] = l.get('mask')
+
         # Collect back the lines for each profile
         for lineId,sublist in pair_byId.items():
             logLine = suffixes_byId.get(lineId)
@@ -1264,6 +1502,77 @@ def mergeDownCommMasks(lines):
             if commMasks_byId.get(lineId):
                 logLine['transition_mask'] = commMasks_byId.get(lineId)
 
+            newLogLines_forProfile.append(logLine)
+
+        newDictOfListsOfLines_byProfile[profile] = newLogLines_forProfile
+
+    return newDictOfListsOfLines_byProfile
+
+def mergeLinkMasks(lines):
+    '''For merging link's source/target and their masks and operations'''
+    for profile in lines:
+        # Find all link lines
+        allLinkedLines = []
+        for t in lines[profile]:
+            if t.get('target') and 'link' in t.get('operation'):
+                allLinkedLines.append(t)
+
+        # Compare link lines with all lines
+        toCleanup = []
+        for t in allLinkedLines:
+            for l in lines[profile]:
+                if 'file_inherit' in l.get('operation'):
+                    continue
+
+                if l.get('path') == t.get('path') and l != t:  # 'path' is the same, but not itself
+                    # Ommit diff keys from target (copy) line to compare further
+                    t_copy = copy.deepcopy(t)
+                    t_copy.pop('timestamp')
+                    t_copy.pop('target')
+                    t_copy.pop('mask')
+                    t_copy.pop('operation')
+                    if t_copy.get('target_diffs'):
+                        t_copy.pop('target_diffs')
+                    if t_copy.get('target_prefix'):
+                        t_copy.pop('target_prefix')
+
+                    # If subset, combine neighbour line with target line
+                    if t_copy.items() <= l.items():
+                        l['target'] = t.get('target')
+                        l['mask'].update(t.get('mask'))
+                        l['operation'].update(t.get('operation'))
+                        if t.get('target_diffs'):
+                            l['target_diffs']  = t.get('target_diffs')
+                        if t.get('target_prefix'):
+                            l['target_prefix'] = t.get('target_prefix')
+
+                        toCleanup.append(t)
+                        break  # success, break to the next 't' link
+
+        # Cleanup merged sources
+        for l in lines[profile]:
+            for t in toCleanup:
+                if l == t:
+                    lines[profile].remove(l)
+
+    return lines
+
+def mergeExactDuplicates(lines):
+
+    newDictOfListsOfLines_byProfile = {}
+    for profile in lines:
+        uniqueLines_byId = {}
+        timestamps_byId = {}
+        newLogLines_forProfile = []
+        for l in lines[profile]:
+            timestamp = l.pop('timestamp')
+            lineId    = makeHashable(l)
+            uniqueLines_byId[lineId] = l
+            timestamps_byId[lineId] = timestamp  # use only the latest timestamp for duplicates
+
+        for lineId,merged in uniqueLines_byId.items():
+            logLine = uniqueLines_byId.get(lineId)
+            logLine['timestamp'] = timestamps_byId.get(lineId)
             newLogLines_forProfile.append(logLine)
 
         newDictOfListsOfLines_byProfile[profile] = newLogLines_forProfile
@@ -1354,12 +1663,11 @@ def adaptTempPaths(lines, ruleStyle):
 
 def isRequestedProfile(currentProfile, requestedProfiles):
     '''For profiles and profile peers (labels)'''
-
     result = False
-    if not requestedProfiles: # all
+    if not requestedProfiles:  # all
         result = True
 
-    elif not currentProfile:  # no 'profile_peer' key
+    elif not currentProfile:   # no 'profile_peer' key
         result = False
 
     elif currentProfile in requestedProfiles:
@@ -1394,15 +1702,23 @@ def isRequestedProfile(currentProfile, requestedProfiles):
 
     return result
 
-def normalizeAndSplit(lines, args_):
+def isRequestedOperation(currentOperations, requestedOperations):
+
+    result = False
+    for o in currentOperations:
+        if o in requestedOperations:
+            result = True
+            break
+
+        for r in requestedOperations:
+            if '*' in r:
+                raise NotImplementedError("Wildcard '*' is not supported for operations")
+
+    return result
+
+def normalizeAndGroup(lines, args):
     '''Split lines by type and convert specific values to sets for further merging'''
-    toDropDbusKeyValues_inLines = {
-        'hostname': '?',
-        'addr':     '?',
-        'terminal': '?',
-        'exe':      '/usr/bin/dbus-daemon',
-    }
-    toAdaptPathKeys = ('path', 'srcpath', 'target', 'interface', 'addr', 'peer_addr') # must be done after normalization and before stacking
+    toAdaptPathKeys = ('path', 'srcpath', 'target', 'interface', 'addr', 'peer_addr')  # must be done after normalization and before stacking
 
     fileDict = {}
     dbusDict = {}
@@ -1415,7 +1731,7 @@ def normalizeAndSplit(lines, args_):
     pivotDict = {}
     unknownDict = {}
     for profile in lines:
-        if not isRequestedProfile(profile, args_.profile):
+        if not isRequestedProfile(profile, args.profile):
             continue
 
         fileL = []
@@ -1429,10 +1745,10 @@ def normalizeAndSplit(lines, args_):
         pivotL = []
         unknownL = []
         for l in lines[profile]:
-            if not isRequestedProfile(l.get('peer'), args_.peer):
+            if not isRequestedProfile(l.get('peer'), args.peer):
                 continue
 
-            if args_.drop_comm:
+            if args.drop_comm:
                 if l.get('comm'):
                     l.pop('comm')
             elif l.get('comm'):
@@ -1442,72 +1758,71 @@ def normalizeAndSplit(lines, args_):
 
             # Stacks or sinkholes based on params
             if findLineType(l) == 'FILE':
-                if 'file' in args_.type:
+                if 'file' in args.type:
                     l['path'] = l.pop('name')
                     l['mask'] = set(list(l.pop('requested_mask')))
 
-                    if not args_.keep_base_abs_transitions:
+                    if not args.keep_base_abs_transitions:
                         if isBaseAbstractionTransition(l, profile):
                             continue
 
-                    [adaptFilePath(l, k, args_.style) for k in toAdaptPathKeys if l.get(k)]
+                    [adaptFilePath(l, k, args.style) for k in toAdaptPathKeys if l.get(k)]
                     fileL.append(l)
 
             elif findLineType(l).startswith('DBUS'):
-                if 'dbus' in args_.type:
-                    [l.pop(k) for k,v in toDropDbusKeyValues_inLines.items() if l.get(k) == v] # drop non-informative DBus data
+                if 'dbus' in args.type:
                     if l.get('member'):
                         l['member'] = {l.pop('member')}
  
                     dbusL.append(l)
 
             elif findLineType(l) == 'NETWORK':
-                if 'network' in args_.type:
+                if 'network' in args.type:
                     l.pop('protocol')
                     l['mask'] = set(l.pop('requested_mask').split())
                     networkL.append(l)
 
             elif findLineType(l) == 'UNIX':
-                if 'unix' in args_.type:
+                if 'unix' in args.type:
                     if l.get('protocol') == '0':
                         l.pop('protocol')
  
                     l['mask'] = set(l.pop('requested_mask').split())
-                    [adaptFilePath(l, k, args_.style) for k in toAdaptPathKeys if l.get(k)]
+                    [adaptFilePath(l, k, args.style) for k in toAdaptPathKeys if l.get(k)]
                     unixL.append(l)
 
             elif findLineType(l) == 'CAPABILITY':
-                if 'cap' in args_.type:
+                if 'cap' in args.type:
                     capL.append(l)
 
             elif findLineType(l) == 'SIGNAL':
-                if 'signal' in args_.type:
+                if 'signal' in args.type:
                     l['signal'] = {l.pop('signal')}
                     signalL.append(l)
 
             elif findLineType(l) == 'PTRACE':
-                if 'ptrace' in args_.type:
+                if 'ptrace' in args.type:
                     l['mask'] = set(l.pop('requested_mask').split())
                     ptraceL.append(l)
 
             elif findLineType(l) == 'MOUNT':
-                if 'mount' in args_.type:
+                if 'mount' in args.type:
                     if l.get('name'):
                         l['path'] = l.pop('name')
                     if l.get('srcname'):
                         l['srcpath'] = l.pop('srcname')
 
-                    [adaptFilePath(l, k, args_.style) for k in toAdaptPathKeys if l.get(k)]
+                    [adaptFilePath(l, k, args.style) for k in toAdaptPathKeys if l.get(k)]
                     mountL.append(l)
 
             elif findLineType(l) == 'PIVOT':
-                if 'pivot' in args_.type:
+                if 'pivot' in args.type:
                     if l.get('name'):
                         l['path'] = l.pop('name')
                     if l.get('srcname'):
                         l['srcpath'] = l.pop('srcname')
 
-                    [adaptFilePath(l, k, args_.style) for k in toAdaptPathKeys if l.get(k)]
+                    [adaptFilePath(l, k, args.style) for k in toAdaptPathKeys if l.get(k)]
                     pivotL.append(l)
 
             else:
@@ -1560,30 +1875,46 @@ def mergeNestedDictionaries(dictOne, dictTwo):
 
    return newDict
 
-def composeRule(l, args_):
+def composeRule(l, args):
     '''Compose final rule and insert it into dictionary line.'''
     if findLineType(l) == 'FILE':
-        if l.get('transition_mask'):
-            transitionMask = l.pop('transition_mask')
+        if l.get('flags'):
+            flagsStr = ', '.join(sorted(l.pop('flags')))
+            rule = f'flags=({flagsStr})'
+
         else:
             transitionMask = None
+            if   l.get('transition_mask'):
+                transitionMask = l.pop('transition_mask')
+            elif l.get('comm'):  # guard
+                if isTransitionComm(l.get('comm')) and len(l.get('comm')) == 1:
+                    transitionMask = l.get('mask')
+ 
+            execType = findExecType(getBaseBin(l.get('path')))
+            if execType:
+                splitProfile = l.get('profile')
+                splitPath    = l.get('path')
+                if   execType == 'i':
+                    l['mask'].add(execType)
+                elif splitProfile[-1] != splitPath[-1] and \
+                     execType == 'P':  # affect only transition, not calling itself
+                    l['mask'].add(execType)
 
-        mask = composeFileMask(l.pop('mask'), transitionMask, args_.convert_file_masks)
-        if ' ' in l.get('path'):
-            path = f'"{l.pop("path")}"'
-        else:
-            path = l.pop('path')
-
-        if l.get('path_prefix'):
-            prefix = f"{l.pop('path_prefix')} "
-        else:
-            prefix = ''
-
-        if l.get('target'):
-            rule = f"{prefix}{path} {mask} -> {l.pop('target')},"
-
-        else:
-            rule = f'{prefix}{path} {mask},'
+            if ' ' in l.get('path'):
+                path = f'"{l.pop("path")}"'
+            else:
+                path = l.pop('path')
+ 
+            if l.get('path_prefix'):
+                prefix = f"{l.pop('path_prefix')} "
+            else:
+                prefix = ''
+ 
+            mask = composeFileMask(l.pop('mask'), transitionMask, args.convert_file_masks)
+            if l.get('target'):
+                rule = f"{prefix}{path} {mask} -> {l.pop('target')},"
+            else:
+                rule = f'{prefix}{path} {mask},'
 
     elif findLineType(l).startswith('DBUS'):
         mask = f"({l.pop('mask')})"
@@ -1668,13 +1999,13 @@ def composeRule(l, args_):
         rule = 'UNKNOWN_RULE'
 
     rule = highlightSpecialChars(rule)
-    l['rule'] = f'[{rule}]'
+    l['rule'] = rule
 
     return l  # leftovers
 
 def sortLines(fileL,   dbusL,  networkL,
               unixL,   capL,   signalL,
-              ptraceL, mountL, pivotL,  unknownL, args_):
+              ptraceL, mountL, pivotL,  unknownL, args):
 
     allDicts = mergeNestedDictionaries(fileL,    dbusL)
     allDicts = mergeNestedDictionaries(allDicts, networkL)
@@ -1684,55 +2015,57 @@ def sortLines(fileL,   dbusL,  networkL,
     allDicts = mergeNestedDictionaries(allDicts, ptraceL)
     allDicts = mergeNestedDictionaries(allDicts, mountL)
     allDicts = mergeNestedDictionaries(allDicts, pivotL)
-    if 'unknown' in args_.type:
+    if 'unknown' in args.type:
         allDicts = mergeNestedDictionaries(allDicts, unknownL)
 
     # Convert dict of dicts to list of dicts
     allDicts_inlined = []
     for profile in allDicts:
         for l in allDicts[profile]:
+            if args.operation:
+                if not isRequestedOperation(l.get('operation'), args.operation):
+                    continue
+
             l['profile'] = profile
             allDicts_inlined.append(l)
 
     # Sort by peer, member, interface, then path if exists, finally grouping by profile
-    if args_.sort == 'profile':
-        [l.pop('timestamp') for l in allDicts_inlined]
-        sortedList = sorted(allDicts_inlined, key=lambda l: ('peer' not in l, l.get('peer', None)))
-        sortedList = sorted(sortedList,       key=lambda l: ('member'       not in l, l.get('member',       None)))
-        sortedList = sorted(sortedList,       key=lambda l: ('interface'    not in l, l.get('interface',    None)))
-        sortedList = sorted(sortedList,       key=lambda l: ('path'         not in l, l.get('path',         None)))
-        sortedList = sorted(sortedList,       key=lambda l: ('addr'         not in l, l.get('addr',         None)))
-        sortedList = sorted(sortedList,       key=lambda l:                           l.get('profile'))
+    if args.sort == 'profile':
+        sortedList = sorted(allDicts_inlined, key=lambda l: ('peer'      not in l, l.get('peer',      None)))
+        sortedList = sorted(sortedList,       key=lambda l: ('member'    not in l, l.get('member',    None)))
+        sortedList = sorted(sortedList,       key=lambda l: ('interface' not in l, l.get('interface', None)))
+        sortedList = sorted(sortedList,       key=lambda l: ('path'      not in l, l.get('path',      None)))
+        sortedList = sorted(sortedList,       key=lambda l: ('bus'       not in l, l.get('bus',       None)))
+        sortedList = sorted(sortedList,       key=lambda l: ('addr'      not in l, l.get('addr',      None)))
+        sortedList = sorted(sortedList,       key=lambda l:                        l.get('profile'))
 
     # Sort by order of appearance
-    elif args_.sort == 'timestamp':
+    elif args.sort == 'timestamp':
         sortedList = sorted(allDicts_inlined, key=lambda l: l.get('timestamp'))
-        [l.pop('timestamp') for l in sortedList]
 
     # Sort by path if exists ignoring profile names
-    elif args_.sort == 'path':
-        [l.pop('timestamp') for l in allDicts_inlined]
+    elif args.sort == 'path':
         sortedList = sorted(allDicts_inlined, key=lambda l: ('path' not in l, l.get('path', None)))
 
     # Sort by profile's peer name (label) if exists ignoring profile names
-    elif args_.sort == 'peer':
-        [l.pop('timestamp') for l in allDicts_inlined]
+    elif args.sort == 'peer':
         sortedList = sorted(allDicts_inlined, key=lambda l: ('peer' not in l, l.get('peer', None)))
 
     # Sort by DBus interface if exists ignoring profile names
-    elif args_.sort == 'interface':
-        [l.pop('timestamp') for l in allDicts_inlined]
+    elif args.sort == 'interface':
         sortedList = sorted(allDicts_inlined, key=lambda l: ('interface' not in l, l.get('interface', None)))
 
     # Sort by DBus member if exists ignoring profile names
-    elif args_.sort == 'member':
-        [l.pop('timestamp') for l in allDicts_inlined]
+    elif args.sort == 'member':
         sortedList = sorted(allDicts_inlined, key=lambda l: ('member' not in l, l.get('member', None)))
+
+    else:  # args guard
+        raise NotImplementedError('This function is not adapted to such sorting request.')
 
     return sortedList
 
 def colorizeLines(plainLines):
-
+    '''& postprocess'''
     # Replace 'peer' after sorting, if it's the same as 'profile'
     for l in plainLines:
         if l.get('peer') == l.get('profile'):
@@ -1759,7 +2092,6 @@ def colorizeLines(plainLines):
 
     toHighlightWordsKeys = (
         'path', 'srcpath', 'target', 'interface', 'addr', 'peer_addr',
-        #'path_diffs', # expand? TODO
     )
     for l in plainLines:
         for k in toHighlightWordsKeys:
@@ -1774,13 +2106,24 @@ def colorizeLines(plainLines):
             if {profile} == l.get('comm'):
                 l.pop('comm')  # ommit comm for itself; but only when single
 
+        flags = set()
+        if l.get('info') == 'Failed name lookup - disconnected path':
+            flags.add(colorize('attach_disconnected', 'Bright Yellow'))
+        if l.get('info') == 'Failed name lookup - deleted entry':
+            flags.add('mediate_deleted')
         if l.get('info') == 'profile transition not found':
             l['mask'].add('N')
+        if flags:
+            l['flags'] = flags
 
         if findLineType(l).startswith('DBUS'):
-            if re.match(':\d+\.\[0-9\]\*$', l.get('name')):
-                colorized = colorize('[0-9]*', 'Green')
-                l['name'] = l.get('name').removesuffix('[0-9]*') + colorized
+            if re.match(':\d+\.(?:\[0-9\]\*|@\{int\})$', l.get('name')):
+                if l['name'].endswith('@{int}'):  # known style characteristic
+                    pcreStyle = '.@{int}'
+                else:
+                    pcreStyle = '.[0-9]*'
+                colorized = colorize(pcreStyle, 'Green')
+                l['name'] = l['name'].removesuffix(pcreStyle) + colorized
 
             members = l.get('member')
             if members:
@@ -1789,62 +2132,30 @@ def colorizeLines(plainLines):
 
                     l['member'] = colorize(members, 'White')
 
-        toChangeKeys = ['profile', 'peer', 'target']
-        for k in toChangeKeys:
+        toColorizeKeys = ['profile', 'peer', 'target']
+        for k in toColorizeKeys:
             if l.get(k):
                 if '▶' in l.get(k):
                     l[k] = l.get(k).replace('▶', colorize('▶', 'Blue'))
 #                elif '▷' in l.get(k):
 #                    l[k] = l.get(k).replace('▷', colorize('▷', 'Blue'))
 
+        trustToColor = {
+            10:  None,
+            9:  'White',
+            8:  'Cyan',
+            7:  'Blue',
+            6:  'Bright Blue',
+            5:  'Yellow',
+            4:  'Bright Yellow',
+            3:  'Red',
+            2:  'Bright Red',
+            1:  'Magenta',
+            0:  'Bright Magenta',
+        }
+        l['trust_color'] = trustToColor[l.pop('trust')]
+
     return plainLines
-
-def findPadding(plainLines):
-
-    padding = {}
-#    for l in plainLines:
-#        for k,v in l.items():
-#            padding[k] = len(v)
-
-    return padding
-
-def display(plainLines, padding_, args_):
-
-    [composeRule(l, args) for l in plainLines]
-    previousProfile = None
-    for l in plainLines:
-        if previousProfile != l.get('profile'):
-            isNextProfile = True
-        else:
-            isNextProfile = False
-        previousProfile = l.get('profile')
-
-        if args_.sort == 'profile':
-            prefix = ''
-            profile = l.pop('profile')
-            if isNextProfile:
-                print(f"\n  {profile}")
-
-        else:
-            pP = adjustPadding(l.get('profile'), 29)
-            prefix = f"{l.pop('profile'):{pP}} "
-
-        rule = l.pop('rule')
-
-        if rule.startswith('[unix '):  # :/
-            P = adjustPadding(rule, 120)
-        else:
-            P = adjustPadding(rule, 50)
-
-        if l:  # if have leftovers
-            suffix = composeSuffix(l, args_.hide_keys)
-            toDisplay = f'{prefix}{rule:{P}} {suffix}'
-        else:
-            toDisplay = f'{prefix}{rule}'
-
-        print(toDisplay)
-
-    return None
 
 def adjustPadding(str_, targetPadding_):
     '''By decolorizing (a copy). Temp?'''
@@ -1857,7 +2168,7 @@ def adjustPadding(str_, targetPadding_):
 
     return result
 
-def warnIfNotSupportedDistro():
+def isSupportedDistro():
 
     # Needs to be allowed in AA profile also
     supportedDistros = (
@@ -1884,16 +2195,12 @@ def warnIfNotSupportedDistro():
             if isSupported:
                 break
 
-    if not isSupported:
-        not_supported = colorize('not supported', 'Yellow')
-        print(f'This distro is {not_supported}. Watch out for inconsistencies.', file=sys.stderr)
-
-    return None
+    return isSupported
 
 def failIfNotConfined():
     '''Only covers confinement, not necessary enforcement'''
     randomTail = ''.join(random.choice(string.ascii_letters) for i in range(8))
-    path = f'/tmp/aa_suggest.am_i_confined.{randomTail}'
+    path = f'/dev/shm/aa_suggest.am_i_confined.{randomTail}'
 
     try:
         with open(path, 'w') as f:
@@ -1904,21 +2211,239 @@ def failIfNotConfined():
     file = pathlib.Path(path)
     if file.is_file():
         file.unlink()
-        raise EnvironmentError('The process is not confined by AppArmor. Refusing to function.')
+        raise EnvironmentError('''The process is not confined by AppArmor. Refusing to function. Expected action:\n
+$ sudo install -m 644 -o root -g root apparmor-suggest/apparmor.d/aa_suggest /etc/apparmor.d/''')
+
+    return None
+
+def findPadding(plainLines):
+
+    padding = {}
+
+    return padding
+
+def display(plainLines, padding_, previousTimestamp, args):
+
+    [composeRule(l, args) for l in plainLines]
+    previousProfile = None
+    for l in plainLines:
+        timestamp = l.pop('timestamp')
+
+        if previousProfile != l.get('profile'):
+            isNextProfile = True
+        else:
+            isNextProfile = False
+        previousProfile = l.get('profile')
+
+        if args.sort == 'profile':
+            prefix = ''
+            profile = l.pop('profile')
+            if isNextProfile:
+                print(f"\n   {profile}")
+
+        else:
+            pP = adjustPadding(l.get('profile'), 29)
+            prefix = f"{l.pop('profile'):{pP}} "
+
+        trustColor = l.pop('trust_color')
+        if trustColor:
+            bracketP = colorize('[', trustColor, 7)  # background
+            bracketS = colorize(']', trustColor, 7)  # background
+        else:
+            bracketP = '['
+            bracketS = ']'
+        rule = f"{bracketP}{l.pop('rule')}{bracketS}"
+
+        if rule.startswith('[unix '):  # :/
+            P = adjustPadding(rule, 120)
+        else:
+            P = adjustPadding(rule, 50)
+
+        if l:  # if have leftovers
+            suffix = composeSuffix(l, args.hide_keys)
+            toDisplay = f'{prefix}{rule:{P}} {suffix}'
+        else:
+            toDisplay = f'{prefix}{rule}'
+
+        if   previousTimestamp == -10:       # poisoning
+            prefixSign = colorize('!', 'Magenta', 1)
+
+        elif previousTimestamp == -3:        # unknown
+            prefixSign = colorize('*', 'Yellow', 1)
+
+        elif previousTimestamp == -2:        # unknown
+            prefixSign = colorize('*', 'Yellow')
+
+        elif previousTimestamp == -1:        # first run
+            prefixSign = colorize('*', 'White', 1)
+
+        elif previousTimestamp < timestamp:  # diff between current run and previous run (newest)
+            prefixSign = colorize('+', 'Green')
+
+        else:
+            prefixSign = ' '  # shown on previous run(s)
+
+        print(f'{prefixSign}{toDisplay}')
+
+    return None
+
+def findPreviousTimestamp(pathStr):
+    '''Read previously saved epoch timestamp from a file'''
+    path = pathlib.Path(pathStr)
+    dirPath = path.parent
+    errors = {}
+    try:
+        if path.exists():
+            if dirPath.stat().st_uid != 0 or oct(dirPath.stat().st_mode) != '0o40700':
+                result = -10  # poisoning
+                poisoning = colorize('poisoning', 'Magenta')
+                errors.append(f'Potential timestamp {poisoning}!')
+            else:
+                result = int(path.read_text())
+    
+        elif path.is_file():
+            result = int(path.read_text())
+    
+        elif not path.exists():
+            result = -1  # first run
+    
+        else:
+            result = -2  # unknown
+
+    except PermissionError as e:
+        errors[f"{e} - AppArmor profile haven't been updated?"] = 15  # exit code
+        result = -3  # unknown
+
+    except:  # never fail
+        result = -3  # unknown
+
+    return (errors, result)
+
+def rewriteLatestTimestamp(pathStr, timestamp):
+    '''(Re)write latest epoch timestamp to a file'''
+    path = pathlib.Path(pathStr)
+    dirPath = path.parent
+
+    errors = {}
+    if dirPath.exists():
+        if dirPath.stat().st_uid != 0 or oct(dirPath.stat().st_mode) != '0o40700':
+            poisoning = colorize('poisoning', 'Magenta')
+            errors[f'Potential timestamp {poisoning}!'] = 20  # exit code
+
+    else:
+        dirPath.mkdir(mode=0o700)
+
+    isSuccessfullWrite = False
+    try:
+        with open(pathStr, 'w') as f:
+            f.write(f"{timestamp}\n")
+
+        isSuccessfullWrite = True
+
+    except PermissionError as e:
+        errors[f"{e} - AppArmor profile haven't been updated?"] = 15  # exit code
+
+    except:  # never fail
+        pass
+
+    return (errors, isSuccessfullWrite)
+
+def displayLegend():
+
+    rule = 'rule'
+    aster_WhtB      = colorize('*', 'White', 1)
+    plus_Grn        = colorize('+', 'Green')
+    aster_YlwB      = colorize('*', 'Yellow', 1)
+    exclm_RedB      = colorize('!', 'Red', 1)
+    bracketL_CyaBg  = colorize('[', 'Cyan', 7)
+    bracketR_CyaBg  = colorize(']', 'Cyan', 7)
+    bracketL_bBluBg = colorize('[', 'Bright Blue', 7)
+    bracketR_bBluBg = colorize(']', 'Bright Blue', 7)
+    bracketL_BluBg  = colorize('[', 'Blue', 7)
+    bracketR_BluBg  = colorize(']', 'Blue', 7)
+    bracketL_YlwBg  = colorize('[', 'Yellow', 7)
+    bracketR_YlwBg  = colorize(']', 'Yellow', 7)
+    bracketL_bYlwBg = colorize('[', 'Bright Yellow', 7)
+    bracketR_bYlwBg = colorize(']', 'Bright Yellow', 7)
+    bracketL_RedBg  = colorize('[', 'Red', 7)
+    bracketR_RedBg  = colorize(']', 'Red', 7)
+    bracketL_MgnBg  = colorize('[', 'Magenta', 7)
+    bracketR_MgnBg  = colorize(']', 'Magenta', 7)
+    key_Red         = colorize('key', 'Red')
+    tail_Ylw        = colorize('aBcXy9', 'Yellow')
+    quote_Cya       = colorize('"', 'Cyan')
+    parenL_Cya      = colorize('(', 'Cyan')
+    parenR_Cya      = colorize(')', 'Cyan')
+    equals_bBlu     = colorize('=', 'Bright Blue')
+    comma_bBlu      = colorize(',', 'Bright Blue')
+    delimiter_Blu   = colorize('▶', 'Blue')
+    commW_Blu       = colorize('w', 'Blue')
+    commN_Blu       = colorize('grep', 'Blue')
+    read_Wht        = colorize('r', 'White', 1)
+    iExec_Wht       = colorize('i', 'White', 1)
+    suggest_Grn     = colorize('@{run}', 'Green')
+    tail_Wht        = colorize('{,.??????}', 'White')
+    write_Grn       = colorize('w', 'Green')
+    wxViol_RedB     = colorize('wx', 'Red', 7)
+    targetMis_bBlkB = colorize('P', 'Bright Black', 7)
+    members_Wht     = colorize('{AddMatch,Hello}', 'White')
+    attachD_bYlw    = colorize('attach_disconnected', 'Bright Yellow')
+    fileI_bYlw      = colorize('file_inherit', 'Bright Yellow')
+
+    legend = f"""
+{aster_WhtB}[{rule}]                             First run
+{aster_YlwB}[{rule}]                             Something went wrong during timestamp file access
+{plus_Grn}[{rule}]                             Difference between current run and previous run (newest lines)
+{exclm_RedB}[{rule}]                             Incorrect permissions for working directory (potential timestamp poisoning)
+ 
+ [{suggest_Grn}] diffs=/run                Suggestion with a diff (replacement)
+ [/f.conf{tail_Wht}]                Suggestion without a diff (addition)
+ [/cert.{key_Red}]                        Sensitive text patterns or errors
+ [/f.conf.{tail_Ylw}]                   Volatile text patterns or warnings
+ [/file r{write_Grn}]                         Access suggestion optimised from declared to usable
+ [/bin/cat {read_Wht}x]                      'x' is always accompanied by 'r'
+ [/bin/sed r{iExec_Wht}x]                     'sed' always have 'i' execution type
+ [/bin/f {targetMis_bBlkB}x]                        Profile transition not found
+ [/bin/f r{wxViol_RedB}]                       W^X violation. Strongly discouraged
+ [{parenL_Cya}s{parenR_Cya} {quote_Cya}/spa ced{quote_Cya}]                   Isolation characters
+ [key{equals_bBlu}value] a{comma_bBlu}b                    Delimiters
+ [member={members_Wht}]          DBus members grouped together without additions
+
+ parent{delimiter_Blu}child [{rule}]                Delimiter for automatically generated subprofiles
+ parent [/file r{commW_Blu}] comm={commN_Blu}        'w' came from 'grep' child. Line changed identification as parent. 'base' abstraction lines are ommited
+                                                           
+ [{rule}]                             Came from 'AVC'
+ {bracketL_CyaBg}{rule}{bracketR_CyaBg}                             Came from 'USER_AVC'
+ {bracketL_BluBg}{rule}{bracketR_BluBg}                             Confirmed DBus line
+ {bracketL_bBluBg}{rule}{bracketR_bBluBg}                             Identifies itself as DBus line
+ {bracketL_bYlwBg}{rule}{bracketR_bYlwBg}                             Nested line with unknown trust
+ {bracketL_YlwBg}{rule}{bracketR_YlwBg}                             Unknown trust
+ {bracketL_RedBg}{rule}{bracketR_RedBg}                             Came from 'USER_AVC', but not a DBus line. Or came from 'AVC', but not from 'system' bus (potential journal poisoning)
+ {bracketL_MgnBg}{rule}{bracketR_MgnBg}                             Came from DBus, but not a DBus line (potential journal poisoning)
+
+ [flags=({attachD_bYlw})] operation={fileI_bYlw}       Not necessarily required
+
+Note: you might want to change your palette to more distinctive colors
+    """
+
+    print(legend)
 
     return None
 
 def handleArgs():
 
     allLineTypes  = ['file', 'dbus', 'unix', 'network', 'signal', 'ptrace', 'cap', 'mount', 'pivot', 'unknown']
-    allSuffixKeys = ['comm', 'operation', 'mask', '*diffs', 'error', 'info', 'class']
+    allSuffixKeys = ['comm', 'operation', 'mask', '*_diffs', 'error', 'info', 'class']
 
     parser = argparse.ArgumentParser(description='Suggest AppArmor rules')
-    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8')
-#    parser.add_argument('-b', '--boot-id', action='store', type=int,
-#                        choices=range(-14, 1),
-#                        default=0,
-#                        help='Specify (previous) boot id')
+    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.9')
+    parser.add_argument('--legend', action='store_true',
+                        default=False,
+                        help='Display color legend')
+    parser.add_argument('-b', '--boot-id', action='store', type=int,
+                        choices=range(-14, 1),
+                        default=0,
+                        help='Specify (previous) boot id')
     parser.add_argument('-t', '--type', action='append',
                         choices=allLineTypes,
                         help='Handle only specified rule type')
@@ -1927,39 +2452,47 @@ def handleArgs():
                         help='Handle only specified profile')
     parser.add_argument('-l', '--peer', action='append',
                         help='Handle only specified peer profile')
-#    parser.add_argument('--operation', action='append',
-#                        help='Display only lines containing specified operation')
+    parser.add_argument('-o', '--operation', action='append',
+                        help='Show only lines containing specified operation. Does not affect merging')
     parser.add_argument('--hide-keys', action='append',
                         choices=allSuffixKeys + ['ALL'],
                         default=[],
                         help='Hide specified keys in suffix. Does not affect merging')
-#    parser.add_argument('--hide-transitions', action='store_true',
-#                        help='Do not expand automatic profile transitions when filtering by specific profile')
-    parser.add_argument('--keep-base-abs-transitions', action='store_true',
-                        default=False,
-                        help="Do not drop automatic transition lines '▶' which rules are present in 'base' abstraction")
     parser.add_argument('--drop-comm', action='store_true',
                         default=False,
                         help='Drop comm key to affect further merging')
+    parser.add_argument('--keep-base-abs-transitions', action='store_true',
+                        default=False,
+                        help="Do not drop automatic transition lines '▶' which rules are present in 'base' abstraction")
     parser.add_argument('--keep-status', action='store_true',
                         help="Do not drop 'apparmor' status key. Affects merging")
+    parser.add_argument('--keep-status-audit', action='store_true',
+                        help="Do not drop 'AUDIT' log lines. Implies '--keep-status'")
     parser.add_argument('-c', '--convert-file-masks', action='store_true',
                         help='Convert requested file masks to currently supported variants. Will be deprecated (changed)')
-    parser.add_argument('--style', action='store',
-                        choices=['default', 'roddhjav/apparmor.d'],
-                        default='default',
-                        help='Style preset. Affects custom tunables')
     parser.add_argument('-s', '--sort', action='store',
                         choices=['profile', 'peer', 'path', 'interface', 'member', 'timestamp'],
                         default='profile',
                         help="Sort by. 'profile' is the default")
+    parser.add_argument('--style', action='store',
+                        choices=['default', 'AppArmor.d'],
+                        default='default',
+                        help="Style preset. Stock or 'roddhjav/AppArmor.d'. Affects custom tunables")
 
     args = parser.parse_args()
+
+    if args.legend:
+        displayLegend()
+        sys.exit(0)
+
     if not args.type:
         args.type = allLineTypes
 
     if 'ALL' in allSuffixKeys:
         args.hide_keys = allSuffixKeys
+
+    if args.keep_status_audit:
+        args.keep_status = True
 
     return args
 
@@ -1972,62 +2505,78 @@ if __name__ == '__main__':
     except ModuleNotFoundError:
         raise ModuleNotFoundError("'systemd' module not found! Install with:\nsudo apt install python3-systemd")
 
-    warnIfNotSupportedDistro()
-
     args = handleArgs()
 
-    logLines = grabLogsByBootId(None, args.keep_status)
+    errors = {}
+    timestampPath = '/dev/shm/apparmor_suggest/timestamp.latest'
+    findPreviousTimestamp_Out = findPreviousTimestamp(timestampPath)
+    errors.update(findPreviousTimestamp_Out[0])
+    previousTimestamp = findPreviousTimestamp_Out[1]
+
+    rawLines = grabJournal(args)
+    findLogLines_Out = findLogLines(rawLines, args)
+    logLines        = findLogLines_Out[0]
+    latestTimestamp = findLogLines_Out[1]  # regardless of filtering
+    rewriteLatestTimestamp_Out = rewriteLatestTimestamp(timestampPath, latestTimestamp)  # write as soon as possible
+    errors.update(rewriteLatestTimestamp_Out[0])
     unsortedLines = []
-    for n,l in enumerate(logLines):
+    for l in logLines:
         normalizeProfileName(l)
         if findLineType(l) == 'FILE':
             adaptProfileAutoTransitions(l)
 
-        l['timestamp'] = n
         unsortedLines.append(l)
 
     allLines = groupLinesByProfile(unsortedLines)
 
-    splitLines_Out = normalizeAndSplit(allLines, args)
-    fileLines    = splitLines_Out[0]
-    dbusLines    = splitLines_Out[1]
-    networkLines = splitLines_Out[2]
-    unixLines    = splitLines_Out[3]
-    capLines     = splitLines_Out[4]
-    signalLines  = splitLines_Out[5]
-    ptraceLines  = splitLines_Out[6]
-    mountLines   = splitLines_Out[7]
-    pivotLines   = splitLines_Out[8]
-    unknownLines = splitLines_Out[9]
+    groupedLines_Out = normalizeAndGroup(allLines, args)
+    fileLines    = groupedLines_Out[0]
+    dbusLines    = groupedLines_Out[1]
+    networkLines = groupedLines_Out[2]
+    unixLines    = groupedLines_Out[3]
+    capLines     = groupedLines_Out[4]
+    signalLines  = groupedLines_Out[5]
+    ptraceLines  = groupedLines_Out[6]
+    mountLines   = groupedLines_Out[7]
+    pivotLines   = groupedLines_Out[8]
+    unknownLines = groupedLines_Out[9]
 
     if 'file'    in args.type:
         fileLines = adaptTempPaths(fileLines, args.style)
+        fileLines = mergeLinkMasks(fileLines)
         fileLines = mergeDictsByKeyPair(fileLines, 'mask', 'operation')
-        fileLines = mergeDownCommMasks(fileLines)
-        #fileLines = mergeDiffs(fileLines)
+        fileLines = mergeCommMasks(fileLines)
 
     if 'dbus'    in args.type:
         dbusLines = adaptDbusPaths(dbusLines, args.style)
         dbusLines = mergeDictsBySingleKey(dbusLines, 'member')
         dbusLines = composeMembers(dbusLines)
+        dbusLines = mergeExactDuplicates(dbusLines)
 
     if 'network' in args.type:
         networkLines = mergeDictsByKeyPair(networkLines, 'mask', 'operation')
 
     if 'unix'    in args.type:
-        unixLines   = mergeDictsByKeyPair(unixLines, 'mask', 'operation')
-        #unixLines   = mergeDownCommMasks(unixLines)
+        unixLines    = mergeDictsByKeyPair(unixLines, 'mask', 'operation')
+        #unixLines    = mergeCommMasks(unixLines)
+
+    if 'cap'     in args.type:
+        capLines     = mergeExactDuplicates(capLines)
 
     if 'signal'  in args.type:
-        signalLines = mergeDictsBySingleKey(signalLines, 'signal')
+        signalLines  = mergeDictsBySingleKey(signalLines, 'signal')
 
     if 'ptrace'  in args.type:
-        ptraceLines = mergeDictsBySingleKey(ptraceLines, 'mask')
+        ptraceLines  = mergeDictsBySingleKey(ptraceLines, 'mask')
 
-    #if 'cap'     in args.type:
-    #if 'mount'   in args.type:
-    #if 'pivot'   in args.type:
-    #if 'unknown' in args.type:
+    if 'mount'   in args.type:
+        mountLines   = mergeExactDuplicates(mountLines)
+
+    if 'pivot'   in args.type:
+        pivotLines   = mergeExactDuplicates(pivotLines)
+
+    if 'unknown' in args.type:
+        unknownLines = mergeExactDuplicates(unknownLines)
 
     sortedLines = sortLines(fileLines,   dbusLines,  networkLines,
                             unixLines,   capLines,   signalLines,
@@ -2036,4 +2585,21 @@ if __name__ == '__main__':
     padding        = findPadding(sortedLines)
     colorizedLines = colorizeLines(sortedLines)
 
-    display(colorizedLines, padding, args)
+    display(colorizedLines, padding, previousTimestamp, args)
+
+    if not isSupportedDistro():
+        not_supported = colorize('not supported', 'Yellow')
+        errors[f'This distro is {not_supported}. Watch out for inconsistencies.'] = 10  # exit code
+
+    isFirst = True
+    highestErrorCode = 0
+    for e,c in errors.items():
+        if isFirst:
+            print('', file=sys.stderr)
+            isFirst = False
+        if highestErrorCode < c:
+            highestErrorCode = c
+        print(e, file=sys.stderr)
+
+    if highestErrorCode != 0:
+        sys.exit(highestErrorCode)
