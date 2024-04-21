@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 # SPDX-License-Identifier: GPL-3.0-only
-# Version: 0.8.9
+# Version: 0.8.10
 
 # line, l - single log line in form of dictionary
 # normalize - prepare line values for a possible merge; make keys consistent
@@ -11,7 +11,6 @@
 # ambiguously - aggressive deduplication; some rule coverage could be broader than needed
 # keep/drop - include or exclude the line from deduplication, affects merging (preprocessing); active filtering
 # show/hide - include or exclude the line from display, does NOT affect merging (postprocessing)
-# handle - passive filtering
 
 # MAIN FLOW:
 # gather logs ->
@@ -1248,40 +1247,36 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
             maskList.append(s)
             maskSet.remove(s)
 
-    # Preserve unknown masks
-    maskString = ''.join(maskList)
-    if maskSet:
-        suffix = ''.join(sorted(maskSet))
-        maskString += suffix
-
-    # Determine what to colorize as dangerous combinations
+    # Determine what to colorize as dangerous combinations; takes precedence as final (rewrite)
     dangerousCombinations = (
         ('x', 'wadclk'),
         ('m', 'wadclk'),
     )
-    toReplaceChars = set()
     for s1,s2 in dangerousCombinations:
         if len(s1) >= 2:  # sanity
             raise ValueError('Leading mask for comparison could only be a single character.')
 
         for subS in s2:
-            if   s1 in maskString and \
-               subS in maskString:
-                toReplaceChars.update([s1, subS])
-
-    # Colorize dangerous combinations
-    for s in maskString:
-        if s in toReplaceChars:
-            highlight = colorize(s, 'Red', 7)  # background
-            maskString = maskString.replace(s, highlight)
+            if   s1 in maskList and \
+               subS in maskList:
+                toColorize[s1]   = ('Red', '7')  # background
+                toColorize[subS] = ('Red', '7')  # background
 
     # Final colorization
     for k,v in toColorize.items():
-        if k in maskString:
-            color      = v[0]
-            colorStyle = v[1]
-            highlight = colorize(k, color, colorStyle)
-            maskString = maskString.replace(k, highlight)
+        color      = v[0]
+        colorStyle = v[1]
+        highlight = colorize(k, color, colorStyle)
+        for n,i in enumerate(maskList):
+            if k == i:
+                maskList[n] = highlight
+                break
+
+    # Combine into string and preserve unknown masks
+    maskString = ''.join(maskList)
+    if maskSet:
+        suffix = ''.join(sorted(maskSet))
+        maskString += suffix
 
     return maskString
 
@@ -1386,7 +1381,6 @@ def mergeDictsByKeyPair(lines, firstKey, secondKey):
         pair_byId = {}
         suffixes_byId = {}
         for l in lines[profile]:
-            #print(l)
             if not l.get(firstKey) or \
                not l.get(secondKey):
                 newLogLines_forProfile.append(l)  # save non-mergable
@@ -1933,7 +1927,7 @@ def composeRule(l, args):
             rule = f"dbus {mask} bus={l.pop('bus')},"
 
         elif not 'peer' in l.keys():
-            comment = colorize('# no peer label', 'Cyan')
+            comment = colorize('# no peer label', 'Bright Cyan')
             rule = f"dbus {mask:9} bus={l.pop('bus'):13} path={l.pop('path'):{pP}} interface={l.pop('interface'):{iP}} member={l.pop('member'):{mP}} peer=(name={l.pop('name')}),  {comment}"
 
         else:
@@ -2137,8 +2131,6 @@ def colorizeLines(plainLines):
             if l.get(k):
                 if '▶' in l.get(k):
                     l[k] = l.get(k).replace('▶', colorize('▶', 'Blue'))
-#                elif '▷' in l.get(k):
-#                    l[k] = l.get(k).replace('▷', colorize('▷', 'Blue'))
 
         trustToColor = {
             10:  None,
@@ -2212,7 +2204,8 @@ def failIfNotConfined():
     if file.is_file():
         file.unlink()
         raise EnvironmentError('''The process is not confined by AppArmor. Refusing to function. Expected action:\n
-$ sudo install -m 644 -o root -g root apparmor-suggest/apparmor.d/aa_suggest /etc/apparmor.d/''')
+$ sudo install -m 644 -o root -g root apparmor-suggest/apparmor.d/aa_suggest /etc/apparmor.d/
+$ sudo apparmor_parser --add /etc/apparmor.d/aa_suggest''')
 
     return None
 
@@ -2350,7 +2343,9 @@ def rewriteLatestTimestamp(pathStr, timestamp):
 
 def displayLegend():
 
-    rule = 'rule'
+    itl = '\x1b[3m'
+    rst = '\x1b[0m'
+    rule = f'{itl}rule{rst}'
     aster_WhtB      = colorize('*', 'White', 1)
     plus_Grn        = colorize('+', 'Green')
     aster_YlwB      = colorize('*', 'Yellow', 1)
@@ -2379,6 +2374,8 @@ def displayLegend():
     delimiter_Blu   = colorize('▶', 'Blue')
     commW_Blu       = colorize('w', 'Blue')
     commN_Blu       = colorize('grep', 'Blue')
+    commS_Blu       = colorize('sed', 'Blue')
+    parentR_Blu     = colorize('r', 'Blue')
     read_Wht        = colorize('r', 'White', 1)
     iExec_Wht       = colorize('i', 'White', 1)
     suggest_Grn     = colorize('@{run}', 'Green')
@@ -2389,42 +2386,44 @@ def displayLegend():
     members_Wht     = colorize('{AddMatch,Hello}', 'White')
     attachD_bYlw    = colorize('attach_disconnected', 'Bright Yellow')
     fileI_bYlw      = colorize('file_inherit', 'Bright Yellow')
+    comments        = colorize('# no peer label', 'Bright Cyan')
 
     legend = f"""
-{aster_WhtB}[{rule}]                             First run
-{aster_YlwB}[{rule}]                             Something went wrong during timestamp file access
-{plus_Grn}[{rule}]                             Difference between current run and previous run (newest lines)
-{exclm_RedB}[{rule}]                             Incorrect permissions for working directory (potential timestamp poisoning)
+{aster_WhtB}[{rule}]                              First run
+{aster_YlwB}[{rule}]                              Something went wrong during timestamp file access
+{plus_Grn}[{rule}]                              Difference between current run and previous run (newest lines)
+{exclm_RedB}[{rule}]                              Incorrect permissions for working directory (potential timestamp poisoning)
  
- [{suggest_Grn}] diffs=/run                Suggestion with a diff (replacement)
- [/f.conf{tail_Wht}]                Suggestion without a diff (addition)
- [/cert.{key_Red}]                        Sensitive text patterns or errors
- [/f.conf.{tail_Ylw}]                   Volatile text patterns or warnings
- [/file r{write_Grn}]                         Access suggestion optimised from declared to usable
- [/bin/cat {read_Wht}x]                      'x' is always accompanied by 'r'
- [/bin/sed r{iExec_Wht}x]                     'sed' always have 'i' execution type
- [/bin/f {targetMis_bBlkB}x]                        Profile transition not found
- [/bin/f r{wxViol_RedB}]                       W^X violation. Strongly discouraged
- [{parenL_Cya}s{parenR_Cya} {quote_Cya}/spa ced{quote_Cya}]                   Isolation characters
- [key{equals_bBlu}value] a{comma_bBlu}b                    Delimiters
- [member={members_Wht}]          DBus members grouped together without additions
+ [{suggest_Grn}] diffs=/run                 Suggestion with a diff (replacement)
+ [/f.conf{tail_Wht}]                 Suggestion without a diff (addition)
+ [/cert.{key_Red}]                         Sensitive text patterns or errors
+ [/f.conf.{tail_Ylw}]                    Volatile text patterns or warnings
+ [/file r{write_Grn}]                          Access suggestion optimised from declared to usable
+ [/bin/cat {read_Wht}x]                       'x' is always accompanied by 'r'
+ [/bin/sed r{iExec_Wht}x]                      'sed' always have 'i' execution type
+ [/bin/f {targetMis_bBlkB}x]                         Profile transition not found
+ [/bin/f r{wxViol_RedB}]                        W^X violation. Strongly discouraged. Takes precedence over every other mask
+ [{parenL_Cya}s, r{parenR_Cya} {quote_Cya}/spa ced{quote_Cya}]                 Isolation characters
+ [key{equals_bBlu}value] a{comma_bBlu}b                     Delimiters
+ [member={members_Wht}]           DBus members grouped together without additions
 
- parent{delimiter_Blu}child [{rule}]                Delimiter for automatically generated subprofiles
- parent [/file r{commW_Blu}] comm={commN_Blu}        'w' came from 'grep' child. Line changed identification as parent. 'base' abstraction lines are ommited
+ parent{delimiter_Blu}child [{rule}]                 Delimiter for automatically generated subprofiles
+ parent [/file r{commW_Blu}] comm=parent,{commN_Blu}  'w' came from 'grep' child. Line changed identification as parent. 'base' abstraction lines are ommited
+ parent [/file {parentR_Blu}{write_Grn}] comm=parent,{commS_Blu}   Parent's 'r' is consumed. Child's 'c' or 'd' is optimised and took presedence
                                                            
- [{rule}]                             Came from 'AVC'
- {bracketL_CyaBg}{rule}{bracketR_CyaBg}                             Came from 'USER_AVC'
- {bracketL_BluBg}{rule}{bracketR_BluBg}                             Confirmed DBus line
- {bracketL_bBluBg}{rule}{bracketR_bBluBg}                             Identifies itself as DBus line
- {bracketL_bYlwBg}{rule}{bracketR_bYlwBg}                             Nested line with unknown trust
- {bracketL_YlwBg}{rule}{bracketR_YlwBg}                             Unknown trust
- {bracketL_RedBg}{rule}{bracketR_RedBg}                             Came from 'USER_AVC', but not a DBus line. Or came from 'AVC', but not from 'system' bus (potential journal poisoning)
- {bracketL_MgnBg}{rule}{bracketR_MgnBg}                             Came from DBus, but not a DBus line (potential journal poisoning)
+ [{rule}]                              Came from 'AVC'
+ {bracketL_CyaBg}{rule}{bracketR_CyaBg}                              Came from 'USER_AVC'
+ {bracketL_BluBg}{rule}{bracketR_BluBg}                              Confirmed DBus line
+ {bracketL_bBluBg}{rule}{bracketR_bBluBg}                              Identifies itself as DBus line
+ {bracketL_bYlwBg}{rule}{bracketR_bYlwBg}                              Nested line with unknown trust
+ {bracketL_YlwBg}{rule}{bracketR_YlwBg}                              Unknown trust
+ {bracketL_RedBg}{rule}{bracketR_RedBg}                              Came from 'USER_AVC', but not a DBus line. Or came from 'AVC', but not from 'system' bus (potential journal poisoning)
+ {bracketL_MgnBg}{rule}{bracketR_MgnBg}                              Came from DBus, but not a DBus line (potential journal poisoning)
 
- [flags=({attachD_bYlw})] operation={fileI_bYlw}       Not necessarily required
+ [flags=({attachD_bYlw})] operation={fileI_bYlw}   Not necessarily required
+ [{rule},  {comments}]                               Comments
 
-Note: you might want to change your palette to more distinctive colors
-    """
+Note: you might want to change your palette to more distinctive colors"""
 
     print(legend)
 
@@ -2436,7 +2435,7 @@ def handleArgs():
     allSuffixKeys = ['comm', 'operation', 'mask', '*_diffs', 'error', 'info', 'class']
 
     parser = argparse.ArgumentParser(description='Suggest AppArmor rules')
-    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.9')
+    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.10')
     parser.add_argument('--legend', action='store_true',
                         default=False,
                         help='Display color legend')
@@ -2503,7 +2502,13 @@ if __name__ == '__main__':
     try:
         from systemd import journal
     except ModuleNotFoundError:
-        raise ModuleNotFoundError("'systemd' module not found! Install with:\nsudo apt install python3-systemd")
+        Debian = colorize('# Debian/Ubuntu/Mint', 'Bright Cyan')
+        Arch   = colorize('# Arch',               'Bright Cyan')
+        SUSE   = colorize('# openSUSE/SLE',       'Bright Cyan')
+        raise ModuleNotFoundError(f"""'systemd' module not found! Install with:
+$ sudo apt install python3-systemd  {Debian}
+# pacman -Sy python-systemd         {Arch}
+# zypper in python3-systemd         {SUSE}""")
 
     args = handleArgs()
 

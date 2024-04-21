@@ -51,8 +51,8 @@ class simpleTests(unittest.TestCase):
         whtb = '\x1b[1;37m' # bold white
         grn  = '\x1b[0;32m' # regular green
         mgn  = '\x1b[0;35m' # regular magenta
-        blu  = '\x1b[0;34m'
-        rst  = '\x1b[0m'
+        blu  = '\x1b[0;34m' # regular blue
+        rst  = '\x1b[0m'    # reset
         self.assertEqual(composeFileMask({'c', 'w', 'r', 'd'}, None, False), f'rwdc')
         self.assertEqual(composeFileMask({'c', 'w', 'r'},      None, True),  f'r{grn}w{rst}') # adapted to usable
         self.assertEqual(composeFileMask({'c', 'd'},           None, True),  f'{grn}w{rst}')
@@ -68,6 +68,7 @@ class simpleTests(unittest.TestCase):
         self.assertEqual(composeFileMask({'r', 'Y', 'c'},      None, True),  f'r{grn}w{rst}Y')
         self.assertEqual(composeFileMask({'w', 'r', 'x'},      None, False), f'r{redg}x{rst}{redg}w{rst}') # colorized dangerous combinations
         self.assertEqual(composeFileMask({'r', 'c', 'm'},      None, False), f'{redg}m{rst}r{redg}c{rst}')
+        self.assertEqual(composeFileMask({'c', 'r', 'x'},      None, True),  f'r{redg}x{rst}{redg}w{rst}') # adapted dangerous combination, W^X took precedence
         self.assertEqual(composeFileMask({'r', 'x', 'N'},      None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'N'
         self.assertEqual(composeFileMask({'r', 'x', 'N', 'P'}, None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'N'; suggestion consumed
         self.assertNotEqual(composeFileMask({'w', 'r', 'x'},   None, False), f'rxw')  # not highlighted
@@ -83,11 +84,20 @@ class simpleTests(unittest.TestCase):
         self.assertEqual(composeFileMask({'w', 'c'},           None, False), f'wc')             # not adapted
         self.assertEqual(composeFileMask({'w', 'c'},           None, True),  f'{grn}w{rst}')    #     adapted
         self.assertEqual(composeFileMask({'r', 'x'},           None, False), f'rx')
+        self.assertEqual(composeFileMask({'k', 'm', 'r', 'x', 'w', 'a', 'd', 'c', 'l'}, None, False), f'{redg}m{rst}r{redg}x{rst}{redg}w{rst}{redg}d{rst}{redg}c{rst}{redg}l{rst}{redg}k{rst}')  # all possible
+        self.assertEqual(composeFileMask({'k', 'm', 'r', 'x', 'w', 'a', 'd', 'c', 'l'}, None, True),  f'{redg}m{rst}r{redg}x{rst}{redg}w{rst}{redg}l{rst}{redg}k{rst}')  # all possible, adaption consumed by W^X
         # Automatic transitions
-        self.assertEqual(composeFileMask({'w', 'c'},     {'w', 'c'}, True),  f'{grn}w{rst}')    # transition consumed by adaption
+        self.assertEqual(composeFileMask({'w', 'c'},     {'w', 'c'}, True),  f'{grn}w{rst}')               # transition consumed by adaption
+        self.assertEqual(composeFileMask({'m', 'r'},     {'m', 'r'}, True),  f'{blu}m{rst}{blu}r{rst}')    # mask and transition mask are the same with adapted flag
+        self.assertEqual(composeFileMask({'m', 'r'},     {'r', 'm'}, False), f'{blu}m{rst}{blu}r{rst}')    # same but different precedence without adapted flag
+        self.assertEqual(composeFileMask({'m', 'c'},     {'m', 'c'}, True),  f'{redg}m{rst}{redg}w{rst}')  # adapted, W^X took precedence
+        self.assertEqual(composeFileMask({'m', 'c'},     {'m', 'c'}, False), f'{redg}m{rst}{redg}c{rst}')  # not adapted, W^X took precedence
         self.assertEqual(composeFileMask({'w', 'c'},     {'w', 'c'}, False), f'{blu}w{rst}{blu}c{rst}')
         self.assertEqual(composeFileMask({'r', 'x', 'i'},     {'r'}, False), f'{blu}r{rst}{whtb}i{rst}x')  # hinting with 'i' as ix candidate
         self.assertEqual(composeFileMask({'r', 'x'},          {'x'}, False), f'r{blu}x{rst}')              # not ix
+        self.assertEqual(composeFileMask({'k', 'm', 'r', 'i', 'x', 'w', 'a', 'd', 'c', 'l'}, {'k', 'm', 'r', 'i', 'x', 'w', 'a', 'd', 'c', 'l'}, False), f'{redg}m{rst}{blu}r{rst}{whtb}i{rst}{redg}x{rst}{redg}w{rst}{redg}d{rst}{redg}c{rst}{redg}l{rst}{redg}k{rst}')  # all possible, transition
+        self.assertEqual(composeFileMask({'k', 'm', 'r', 'i', 'x', 'w', 'a', 'd', 'c', 'l'}, {'k', 'm', 'r', 'i', 'x', 'w', 'a', 'd', 'c', 'l'}, True),  f'{redg}m{rst}{blu}r{rst}{whtb}i{rst}{redg}x{rst}{redg}w{rst}{redg}l{rst}{redg}k{rst}')  # all possible, adapted, transition
+        self.assertEqual(composeFileMask({'k', 'm', 'r', 'i', 'x', 'w', 'a', 'd', 'c', 'l'}, {'m', 'i', 'x', 'w', 'a', 'd', 'c', 'l'}, True),            f'{redg}m{rst}r{whtb}i{rst}{redg}x{rst}{redg}w{rst}{redg}l{rst}{redg}k{rst}')  # almost all possible, adapted, transition
 
     def test_isRequestedProfile(self):     # Current profile [line]     # Requested profile(s)
         self.assertTrue(isRequestedProfile( 'dconf',                    []))  # all
