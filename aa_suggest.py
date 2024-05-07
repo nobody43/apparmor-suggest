@@ -30,6 +30,7 @@ import pathlib
 import string
 import random
 import copy
+import os
 
 def adaptFilePath(l, key, ruleStyle):
     '''Applied early to fully handle duplicates.
@@ -43,274 +44,317 @@ def adaptFilePath(l, key, ruleStyle):
     random6  = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9])(?:[0-9a-zA-Z]{6})' # aBcXy9, AbcXyz, abcxy9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1
     random8  = '(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9])(?:[0-9a-zA-Z]{8})' # aBcDwXy9, AbcdWxyz, abcdwxy9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1
     random10 = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9])(?:[0-9a-zA-Z]{10})' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1
-    users        = '(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{uid})'
-    usersC       = '(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'
-    hex32        = '(?:[0-9a-fA-F]{32}|\[0-9a-f\]\*\[0-9a-f\]|@{hex32})'
-    hex32C       = '(?:[0-9a-fA-F]{32})'
-    hex2         = '(?:[0-9a-fA-F]{2}|\[0-9a-f\]\[0-9a-f\]|@{h}@{h})'
-    hex2C        = '(?:[0-9a-fA-F]{2})'
-    hex16        = '(?:[0-9a-fA-F]{16}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
-    hex16C       = '(?:[0-9a-fA-F]{16})'
-    hex38        = '(?:[0-9a-fA-F]{38}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
-    hex38C       = '(?:[0-9a-fA-F]{38})'
-    ints         = '(?:\d+|\[0-9\]\*|@{int})'
-    uuid         = '(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12}|\[0-9a-f\]\*\[0-9a-f\]|@{uuid})'
-    uuidC        = '(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})'
-    etc_ro       = '(?:/usr/etc|@{etc_ro})'
-    run          = '(?:/var/run|/run|@{run})'
-    runC         = '(?:/var/run|/run)'
-    proc         = '(?:/proc|@{PROC})'
-    procC        = '(?:/proc)'
-    sys          = '(?:/sys|@{sys})'
-    sysC         = '(?:/sys)'
-    pids         = '(?:[2-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{pid})'  # 3-4999999999
-    pidsC        = '(?:[2-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'         # 3-4999999999; capture
-    tids         = '(?:[1-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{tid})'  # 1-4999999999
-    tidsC        = '(?:[1-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'         # 1-4999999999; capture
-    multiarch    = '(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?|@{multiarch})'
-    multiarchC   = '(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?)'
-    user_cache   = '(?:@?/home/[^/]+/\.cache|@{user_cache_dirs})'
-    user_cacheC  = '(?:@?/home/[^/]+/\.cache)'
-    user_config  = '(?:@?/home/[^/]+/\.config|@{user_config_dirs})'
-    user_configC = '(?:@?/home/[^/]+/\.config)'
-    user_share   = '(?:@?/home/[^/]+/\.local/share|@{user_share_dirs})'
-    user_shareC  = '(?:@?/home/[^/]+/\.local/share)'
-    homes        = '(?:@?/home/[^/]+|@{HOME})'
-    homesC       = '(?:@?/home/[^/]+)'
-    pciId        = '(?:[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.\d|\?\?\?\?:\?\?:\?\?\.\?|@{pci_id})'
-    pciIdC       = '(?:[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.\d)'
-    o3           = '(?:3|{\,3})?'                # optional '3'
-    oWayland     = '(?:-wayland|{\,-wayland})?'  # optional '-wayland'
-    oUsr         = '(?:usr/|{\,usr/})?'          # optional '/usr'
-    oUsrC        = '(?:usr/)?'                   # optional '/usr'; capture
-    Any          = '(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
+    users        = r'(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{uid})'
+    usersC       = r'(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'
+    hex2         = r'(?:[0-9a-fA-F]{2}|\[0-9a-f\]\[0-9a-f\]|@{h}@{h})'
+    hex2C        = r'(?:[0-9a-fA-F]{2})'
+    hex16        = r'(?:[0-9a-fA-F]{16}|\[0-9a-f\]\*\[0-9a-f\]|@{hex16})'
+    hex16C       = r'(?:[0-9a-fA-F]{16})'
+    hex32        = r'(?:[0-9a-fA-F]{32}|\[0-9a-f\]\*\[0-9a-f\]|@{hex32})'
+    hex32C       = r'(?:[0-9a-fA-F]{32})'
+    hex38        = r'(?:[0-9a-fA-F]{38}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
+    hex38C       = r'(?:[0-9a-fA-F]{38})'
+    ints         = r'(?:\d+|\[0-9\]\*|@{int})'
+    intsC        = r'(?:\d+|\[0-9\]\*|@{int})'
+    uuid         = r'(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12}|\[0-9a-f\]\*\[0-9a-f\]|@{uuid})'
+    uuidC        = r'(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})'
+    etc_ro       = r'(?:/usr/etc|@{etc_ro})'
+    run          = r'(?:/var/run|/run|@{run})'
+    runC         = r'(?:/var/run|/run)'
+    runJ         = r'(?:/var|/run|@{run})'
+    proc         = r'(?:/proc|@{PROC})'
+    procC        = r'(?:/proc)'
+    sys          = r'(?:/sys|@{sys})'
+    sysC         = r'(?:/sys)'
+    pids         = r'(?:[2-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{pid})'  # 3-4999999999
+    pidsC        = r'(?:[2-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'         # 3-4999999999; capture
+    tids         = r'(?:[1-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{tid})'  # 1-4999999999
+    tidsC        = r'(?:[1-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'         # 1-4999999999; capture
+    multiarch    = r'(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?|@{multiarch})'
+    multiarchC   = r'(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?)'
+    user_cache   = r'(?:@?/home/[^/]+/\.cache|@{user_cache_dirs})'
+    user_cacheC  = r'(?:@?/home/[^/]+/\.cache)'
+    user_config  = r'(?:@?/home/[^/]+/\.config|@{user_config_dirs})'
+    user_configC = r'(?:@?/home/[^/]+/\.config)'
+    user_share   = r'(?:@?/home/[^/]+/\.local/share|@{user_share_dirs})'
+    user_shareC  = r'(?:@?/home/[^/]+/\.local/share)'
+    homes        = r'(?:@?/home/[^/]+|@{HOME})'
+    homesC       = r'(?:@?/home/[^/]+)'
+    pciId        = r'(?:[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.\d|\?\?\?\?:\?\?:\?\?\.\?|@{pci_id})'
+    pciIdC       = r'(?:[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.\d)'
+    o3           = r'(?:3|{\,3})?'                # optional '3'
+    oWayland     = r'(?:-wayland|{\,-wayland})?'  # optional '-wayland'
+    oUsr         = r'(?:usr/|{\,usr/})?'          # optional '/usr'
+    oUsrC        = r'(?:usr/)?'                   # optional '/usr'; capture
+    Any          = r'(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
     literalBackslash = '\\\\'
 
     # Special cases <3
-    pciBus = '(?:(?:pci)?[0-9a-f]{4}:[0-9a-f]{2}|(?:pci)?\?\?\?\?:\?\?|@{pci_bus})'
+    pciBus = r'(?:(?:pci)?[0-9a-f]{4}:[0-9a-f]{2}|(?:pci)?\?\?\?\?:\?\?|@{pci_bus})'
     if ruleStyle == 'AppArmor.d':
-        Bin     = '(?:/(?:usr/)?(?:s)?bin|@{bin})'
-        BinC    = '(?:/(?:usr/)?(?:s)?bin)'
-        pciBusC = '(?:pci[0-9a-f]{4}:[0-9a-f]{2})'
+        Bin     = r'(?:/(?:usr/)?(?:s)?bin|@{bin})'
+        BinC    = r'(?:/(?:usr/)?(?:s)?bin)'
+        pciBusC = r'(?:pci[0-9a-f]{4}:[0-9a-f]{2})'
     else:
-        Bin     = '(?:/(?:usr/)?(?:s)?bin|/{\,usr/}bin)'
-        BinC    = '(?:/(?:usr/)?bin)'
-        pciBusC = '(?:[0-9a-f]{4}:[0-9a-f]{2})'
+        Bin     = r'(?:/(?:usr/)?(?:s)?bin|/{\,usr/}bin)'
+        BinC    = r'(?:/(?:usr/)?bin)'
+        pciBusC = r'(?:[0-9a-f]{4}:[0-9a-f]{2})'
 
     # Substitute capturing group with t[1] or t[2]; order matters when mentioned
     regexpToMacro = [  # non-tunables
  # regex                                                                            # default style         # apparmor.d style      # prefix, optional
-(f'^{user_share}/gvfs-metadata/(|{Any})$',                                           None,                  '{,*}',                 'deny'),
-(f'^/var/lib/apt/lists/({Any})\.yml\.gz$',                                          '*',                     None),
+(rf'^{user_share}/gvfs-metadata/(|{Any})$',                                           None,                  '{,*}',                 'deny'),
+(rf'^/var/lib/apt/lists/({Any})\.yml\.gz$',                                          '*',                     None),
 #(f'^{user_share}/yelp/storage/({Any})/',                                            '*',                     None,                  'owner'),
 #(f'^{user_share}/yelp/storage/[^/]+/({Any})/',                                      '*',                     None,                  'owner'),
  # Capturing *any* goes above
-(f'^{Bin}/(|e|f)grep$',                                                             '{,e,f}',                None),
-(f'^{Bin}/(|g|m)awk$',                                                              '{,g,m}',                None),
-(f'^{Bin}/gettext(|\.sh)$',                                                         '{,.sh}',                None),
-(f'^{Bin}/python3\.(\d+)',                                                          '[0-9]{,[0-9]}',        '@{int}'),
-(f'^{Bin}/which(|\.debianutils)$',                                                  '{,.debianutils}',       None),
-(f'^{Bin}/ldconfig(|\.real)$',                                                      '{,.real}',              None),
-(f'^/{oUsr}(?:local/)?lib/python3\.(\d+)/',                                         '[0-9]{,[0-9]}',        '@{int}'),
-(f'^/usr/share/gtk-([2-4])\.0/',                                                    '[2-4]',                 None),
-(f'^/usr/share/icu/(\d+)\.',                                                        '[0-9]*',               '@{int}'),
-(f'^/usr/share/icu/{ints}\.(\d+)/',                                                 '[0-9]*',               '@{int}'),
-(f'^/{oUsr}lib/kde(|3|4)/',                                                         '{,3,4}',                None),
-(f'^/etc/apparmor\.d/libvirt/libvirt-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/etc/gdm({o3})/',                                                               '{,3}',                  None),
-(f'^/etc/gtk-([2-4])\.0/',                                                          '[2-4]',                 None),
-(f'^/etc/python3\.(\d+)/',                                                          '[0-9]{,[0-9]}',        '@{int}'),
-(f'^/var/cache/fontconfig/({hex32C})-',                                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
-(f'^/var/cache/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',               '??????',               '@{rand6}',             'owner'),
-(f'^/var/cache/fontconfig/({uuidC})-',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^/var/log/journal/({hex32C})/',                                                  '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
-(f'^/var/log/journal/{hex32}/system@({hex16}-{hex16C})\.',                          '*',                     None),      # '@' is a string
-(f'^/var/log/journal/{hex32}/system@({hex32C})-',                                   '[0-9a-f]*[0-9a-f]',    '@{hex32}'), # '@' is a string
-(f'^/var/log/journal/{hex32}/system@{hex32}-({hex16}-{hex16C})\.',                  '*',                     None),      # '@' is a string
-(f'^/var/log/journal/{hex32}/user-{users}@({hex32C})-',                             '[0-9a-f]*[0-9a-f]',    '@{hex32}'), # '@' is a string
-(f'^/var/log/journal/{hex32}/user-{users}@{hex32}-({hex16}-{hex16C})\.',            '*',                     None),      # '@' is a string
-(f'^/var/log/Xorg\.(\d+)\.',                                                        '[0-9]*',               '@{int}',               'owner'),
-(f'^/var/lib/btrfs/scrub\.progress\.({uuidC})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/var/lib/btrfs/scrub\.status\.({uuidC})(?:_tmp)?$',                             '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/var/lib/cni/results/cni-loopback-({uuidC})-lo$',                               '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/var/lib/ca-certificates/openssl/({random8}).\d+$',                             '????????',             '@{rand8}'),
-(f'^/var/lib/update-notifier/tmp\.({random10})$',                                   '??????????',           '@{rand10}'),
-(f'^@?/var/lib/gdm({o3})/',                                                         '{,3}',                  None),
-(f'^@?/var/lib/gdm{o3}/\.cache/ibus/dbus-({random8})$',                             '????????',             '@{rand8}'),
-(f'^/var/lib/gdm{o3}/\.cache/gstreamer-(\d+)$',                                     '[0-9]*',               '@{int}'),
-(f'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/({hex2C})/',                         '[0-9a-f][0-9a-f]',     '@{h}@{h}'),
-(f'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',       '[0-9a-f]*[0-9a-f]',    '@{hex}'),   # temp pair? TODO
-(f'^/var/lib/gdm{o3}/\.config/ibus/bus/({hex32C})-',                                '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
+(rf'^{Bin}/(|e|f)grep$',                                                             '{,e,f}',                None),
+(rf'^{Bin}/(|g|m)awk$',                                                              '{,g,m}',                None),
+(rf'^{Bin}/gettext(|\.sh)$',                                                         '{,.sh}',                None),
+(rf'^{Bin}/python3\.(\d+)(?:-[a-z]+)?$',                                             '[0-9]{,[0-9]}',        '@{int}'),
+(rf'^{Bin}/ruby\d+\.(\d+)$',                                                         '[0-9]',                '@{int}'),
+(rf'^{Bin}/which(|\.debianutils)$',                                                  '{,.debianutils}',       None),
+(rf'^{Bin}/ldconfig(|\.real)$',                                                      '{,.real}',              None),
+(rf'^/{oUsr}(?:local/)?lib/python3\.(\d+)/',                                         '[0-9]{,[0-9]}',        '@{int}'),
+(rf'^/usr/share/gdm({o3})/',                                                         '{,3}',                  None),
+(rf'^/usr/share/gtk-([2-4])\.\d+/',                                                  '[2-4]',                 None),
+(rf'^/usr/share/icu/(\d+)\.',                                                        '[0-9]*',               '@{int}'),
+(rf'^/usr/share/icu/{ints}\.(\d+)/',                                                 '[0-9]*',               '@{int}'),
+(rf'^/usr/share/qt(|5|6)(?:ct)?/',                                                   '{,5,6}',                None),
+(rf'^/{oUsr}lib/kde(|3|4)/',                                                         '{,3,4}',                None),
+(rf'^/etc/apparmor\.d/libvirt/libvirt-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^/etc/gdm({o3})/',                                                               '{,3}',                  None),
+(rf'^/etc/gtk-([2-4])\.0/',                                                          '[2-4]',                 None),
+(rf'^/etc/python3\.(\d+)/',                                                          '[0-9]{,[0-9]}',        '@{int}'),
+(rf'^/var/backups/apt\.extended_states\.(\d+)$',                                     '[0-9]*',    	     '@{int}',               'owner'),
+(rf'^/var/cache/fontconfig/({hex32C})-',                                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(rf'^/var/cache/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',               '??????',               '@{rand6}',             'owner'),
+(rf'^/var/cache/fontconfig/({uuidC})-',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^{runJ}/log/journal/({hex32C})/',                                          	     '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
+(rf'^{runJ}/log/journal/{hex32}/system@({hex16C})-',                                 '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/system@{hex16}-({hex16C})\.',                  	     '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/system@({hex32C})-',                           	     '[0-9a-f]*[0-9a-f]',    '@{hex32}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/system@{hex32}-({hex16C})-',                         '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/system@{hex32}-{hex16}-({hex16C})\.',          	     '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/user-{users}@({hex32C})-',                     	     '[0-9a-f]*[0-9a-f]',    '@{hex32}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/user-{users}@{hex32}-({hex16C})-',       	     '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/user-{users}@{hex32}-{hex16}-({hex16C})\.',    	     '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/user-{users}@({hex16C})-',            	             '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^{runJ}/log/journal/{hex32}/user-{users}@{hex16}-({hex16C})\.',            	     '[0-9a-f]*[0-9a-f]',    '@{hex16}'), # '@' is a string
+(rf'^/var/log/lightdm/seat(\d+)-',                                    		     '[0-9]*',               '@{int}',               'owner'),
+(rf'^/var/log/popularity-contest\.(\d+)(?:\.)?$',                                    '[0-9]*',               '@{int}',               'owner'),
+(rf'^/var/log/Xorg\.(\d+)\.',                                                        '[0-9]*',               '@{int}',               'owner'),
+(rf'^/var/lib/btrfs/scrub\.progress\.({uuidC})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^/var/lib/btrfs/scrub\.status\.({uuidC})(?:_tmp)?$',                             '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^/var/lib/cni/results/cni-loopback-({uuidC})-lo$',                               '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^/var/lib/ca-certificates/openssl/({random8})\.',                                '????????',             '@{rand8}'),
+(rf'^/var/lib/update-notifier/tmp\.({random10})$',                                   '??????????',           '@{rand10}'),
+(rf'^@?/var/lib/gdm({o3})/',                                                         '{,3}',                  None),
+(rf'^@?/var/lib/gdm{o3}/\.cache/ibus/dbus-({random8})$',                             '????????',             '@{rand8}'),
+(rf'^/var/lib/gdm{o3}/\.cache/gstreamer-(\d+)$',                                     '[0-9]*',               '@{int}'),
+(rf'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/({hex2C})/',                         '[0-9a-f][0-9a-f]',     '@{h}@{h}'),
+(rf'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',       '[0-9a-f]*[0-9a-f]',    '@{hex}'),   # temp pair? TODO
+(rf'^/var/lib/gdm{o3}/\.config/ibus/bus/({hex32C})-',                                '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
 #(f'^/var/lib/gdm{o3}/\.config/ibus/bus/{hex32}-unix({oWayland})-{ints}$',           '{,-wayland}',           None),
-(f'^/var/lib/gdm{o3}/\.config/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',              '[0-9]*',               '@{int}'),
-(f'^/var/lib/gdm{o3}/\.local/share/xorg/Xorg\.(\d+)\.',                             '[0-9]*',               '@{int}'),
-(f'^/var/lib/kubelet/pods/({uuidC})/',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^/var/lib/libvirt/swtpm/({uuidC})/',                                             '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{homes}/xauth_({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
-(f'^({user_cacheC})/',                                                               None,                  '@{user_cache_dirs}',   'owner'),
-(f'^({user_configC})/',                                                              None,                  '@{user_config_dirs}',  'owner'),
-(f'^{user_cache}/fontconfig/({hex32C})-',                                           '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
-(f'^{user_cache}/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',             '??????',               '@{rand6}',             'owner'),
-(f'^{user_cache}/fontconfig/({uuidC})-',                                            '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^{user_cache}/gnome-software/icons/({hex38C})-',                                 '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
-(f'^{user_cache}/gstreamer-(\d+)/',                                                 '[0-9]*',               '@{int}',               'owner'),
-(f'^{user_cache}/event-sound-cache\.tdb\.({hex32C})\.',                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
-(f'^{user_cache}/mesa_shader_cache/({hex2C})/',                                     '[0-9a-f][0-9a-f]',     '@{h}@{h}',             'owner'),
-(f'^{user_cache}/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',                   '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'), # temp pair? TODO
-(f'^{user_cache}/thumbnails/[^/]+/({hex32C}).png',                                  '*',                    '@{hex32}',             'owner'),
-(f'^{user_cache}/thumbnails/fail/gnome-thumbnail-factory/({hex32C}).png',           '*',                    '@{hex32}',             'owner'),
-(f'^@?{user_cache}/ibus/dbus-({random8})$',                                         '????????',             '@{rand8}',             'owner'),
-(f'^{user_config}/#(\d+)$',                                                         '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^{user_config}/ibus/bus/({hex32C})-',                                            '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
-#(f'^{user_config}/ibus/bus/{hex32}-unix({oWayland})-{ints}$',                       '{,-wayland}',           None,                  'owner'),
-(f'^{user_config}/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',                          '[0-9]*',               '@{int}',               'owner'),
-(f'^{user_config}/vlc/vlcrc\.(\d+)$',                                               '[0-9]*',               '@{int}',               'owner'),
-(f'^{user_config}/vlc/vlc-qt-interface\.conf(|\.{random6})$',                       '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
-(f'^{user_config}/qBittorrent/\.({random6})/',                                      '??????',               '@{rand6}',             'owner'),
-(f'^{user_config}/qBittorrent/qBittorrent-data\.conf(|\.{random6})$',               '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
-(f'^{user_config}/QtProject\.conf(|\.{random6})$',                                  '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
-(f'^{user_share}/gvfs-metadata/root-({random8})\.log$',                             '????????',             '@{rand8}',             'owner'),
-(f'^{user_share}/kcookiejar/cookies\.({random6})$',                                 '??????',               '@{rand6}',             'owner'),
-(f'^@?/tmp/\.X11-unix/X(\d+)$',                                                     '[0-9]*',               '@{int}',               'owner'),
-(f'^@?/tmp/\.ICE-unix/(\d+)$',                                                      '[0-9]*',               '@{int}'),
-(f'^@?/tmp/dbus-({random8})$',                                                      '????????',             '@{rand8}' ,            'owner'),
-(f'^@?/tmp/dbus-({random10})$',                                                     '??????????',           '@{rand10}' ,           'owner'),
-(f'^@?/tmp/xauth_({random6})(?:-c|-l)?$',                                           '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/\.dotnet/shm/session(\d+)/',                                               '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^/tmp/\.coreclr\.({random6})/',                                                  '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/\.gnome_desktop_thumbnail\.({random6})$',                                  '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/\.xfsm-ICE-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/\.t?X(\d+)-',                                                              '[0-9]*',               '@{int}',               'owner'),
-(f'^/tmp/apt-changelog-({random6})/',                                               '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/apt-changelog-{random6}/\.apt-acquire-privs-test\.({random6})$',           '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/apt\.data\.({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/apt-dpkg-install-({random6})/',                                            '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/apt-key-gpghome\.({random10})/',                                           '??????????',           '@{rand10}',            'owner'),
-(f'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x({hex16C})\.',                          '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
-(f'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x{hex16}\.debian-stable\.(\d+)x?$',      '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^/tmp/aurules\.({random8})$',                                                    '????????',             '@{rand8}',             'owner'),
-(f'^/tmp/clr-debug-pipe-(\d+)-',                                                    '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^/tmp/clr-debug-pipe-{ints}-(\d+)-',                                             '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^/tmp/config-err-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/dotnet-diagnostic-(\d+)-',                                                 '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^/tmp/dotnet-diagnostic-{ints}-(\d+)-',                                          '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^/tmp/dpkg\.({random6})/',                                                       '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/gdkpixbuf-xpm-tmp\.({random6})$',                                          '??????',               '@{rand6}' ,            'owner'),
-(f'^/tmp/\.gnome_desktop_thumbnail.({random6})$',                                   '??????',               '@{rand6}' ,            'owner'),
-(f'^/tmp/kcminit\.({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/Mozilla({uuidC})-',                                                        '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^/tmp/Mozilla{literalBackslash}{{({uuidC}){literalBackslash}}}-',                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^/tmp/talpid-openvpn-({uuidC})$',                                                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^/tmp/Temp-({uuidC})/',                                                          '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^/tmp/tmp\.({random10})/',                                                       '??????????',           '@{rand10}',            'owner'),
-(f'^/tmp/tmp({random8})/',                                                          '????????',             '@{rand8}',             'owner'),
-(f'^/tmp/server-(\d+)\.',                                                           '[0-9]*',               '@{int}'),
-(f'^/tmp/sort({random6})$',                                                         '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/systemd-private-({hex32C})-',                                              '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
-(f'^/tmp/systemd-private-{hex32}-[^/]+\.service-({random6})/',                      '??????',               '@{rand6}',             'owner'),
-(f'^/tmp/({uuidC})$',                                                               '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
-(f'^/tmp/zabbix_server_({random6})$',                                               '??????',               '@{rand6}',             'owner'),
-(f'^{run}/gdm({o3})/',                                                              '{,3}',                  None),
-(f'^{run}/log/journal/({hex32C})/',                                                 '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
-(f'^{run}/netns/cni-({uuidC})$',                                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{run}/NetworkManager/nm-openvpn-({uuidC})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{run}/systemd/seats/seat(\d+)$',                                                '[0-9]*',               '@{int}'),
-(f'^{run}/systemd/netif/links/(\d+)$',                                              '[0-9]*',               '@{int}'),
-(f'^{run}/systemd/(?:sessions|inhibit)/(.+)\.ref$',                                 '*',                     None),
-(f'^{run}/snapper-tools-({random6})/',                                              '??????',               '@{rand6}',             'owner'),
-(f'^{run}/user/{users}/\.dbus-proxy/[a-z]+-bus-proxy-({random6})$',                 '??????',               '@{rand6}',             'owner'),
-(f'^{run}/user/{users}/at-spi/bus_(\d+)$',                                          '[0-9]*',               '@{int}',               'owner'),
-(f'^{run}/user/{users}/discover({random6})\.',                                      '??????',               '@{rand6}'),
-(f'^{run}/user/{users}/kmozillahelper({random6})\.',                                '??????',               '@{rand6}',             'owner'),
-(f'^{run}/user/{users}/kmozillahelper{random6}\.(\d+)\.',                           '[0-9]*[0-9]',          '@{int}',               'owner'),
-(f'^{run}/user/{users}/wayland-(\d+)(?:\.lock)?$',                                  '[0-9]*',               '@{int}',               'owner'),
-(f'^{run}/user/{users}/webkitgtk/[a-z]+-proxy-({random6})$',                        '??????',               '@{rand6}',             'owner'),
-(f'^{run}/user/{users}/xauth_({random6})$',                                         '??????',               '@{rand6}',             'owner'),
-(f'^{run}/user/{users}/pipewire-(\d+)$',                                            '[0-9]*',               '@{int}',               'owner'),
-(f'^{sys}/bus/pci/slots/(\d+)/',                                                    '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/{pciBus}/({pciIdC})/',                                            '????:??:??.?',         '@{pci_id}'),
-(f'^{sys}/devices/{pciBus}/{pciId}/({pciIdC})/',                                    '????:??:??.?',         '@{pci_id}'),
-(f'^{sys}/devices/{pciBus}/{pciId}/[^/]+/host(\d+)/',                               '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/{pciBus}/{pciId}/(?:{pciId}/)?drm/card(\d+)/',                    '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/{pciBus}/{pciId}/(?:{pciId}/)?drm/card{ints}/metrics/({uuidC})/', '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{sys}/devices/pci({pciBusC})/',                                                 '????:??',               None),
-(f'^{sys}/devices/({pciBusC})/',                                                     None,                  '@{pci_bus}'),
-(f'^{sys}/devices/platform/serial\d+/tty/ttyS?(\d+)/',                              '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/system/cpu/cpu(\d+)/',                                            '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/system/cpu/cpufreq/policy(\d+)/',                                 '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/system/memory/memory(\d+)/',                                      '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/system/node/node(\d+)/',                                          '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/virtual/tty/tty(\d+)/',                                           '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/virtual/hwmon/hwmon(\d+)/',                                       '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/virtual/block/dm-(\d+)/',                                         '[0-9]*',               '@{int}'),
-(f'^{sys}/devices/virtual/vc/[a-z]+(\d+)/',                                         '[0-9]*',               '@{int}'),
-(f'^{sys}/fs/btrfs/({uuidC})/',                                                     '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{sys}/firmware/efi/efivars/[^/]+-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
-(f'^{sys}/kernel/iommu_groups/(\d+)/',                                              '[0-9]*',               '@{int}'),
-(f'^{proc}/{pids}/fdinfo/(\d+)$',                                                   '[0-9]*',               '@{int}',               'owner'),
-(f'^{proc}/sys/net/ipv(4|6)/',                                                      '{4,6}',                 None),
-(f'^{proc}/irq/(\d+)/',                                                             '[0-9]*',               '@{int}'),
-(f'^/dev/cpu/(\d+)/',                                                               '[0-9]*',               '@{int}'),
-(f'^/dev/dri/card(\d+)$',                                                           '[0-9]*',               '@{int}'),
-(f'^/dev/input/event(\d+)$',                                                        '[0-9]*',               '@{int}'),
-(f'^/dev/media(\d+)$',                                                              '[0-9]*',               '@{int}'),
-(f'^/dev/pts/(\d+)$',                                                               '[0-9]*',               '@{int}',               'owner'),
-(f'^/dev/shm/sem\.({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
-(f'^/dev/shm/sem\.mp-(\w+)$',                                                       '????????',              None,                  'owner'),
-(f'^/dev/shm/dunst-({random6})$',                                                   '??????',               '@{rand6}',             'owner'),
-(f'^/dev/tty(\d+)$',                                                                '[0-9]*',               '@{int}',               'owner'),
-(f'^/dev/ttyS(\d+)$',                                                               '[0-9]*',               '@{int}',               'owner'),
-(f'^/dev/vfio/(\d+)$',                                                              '[0-9]*',               '@{int}'),
-(f'^/dev/video(\d+)$',                                                              '[0-9]*',               '@{int}'),
-(f'/#(\d+)$',                                                                       '[0-9]*[0-9]',          '@{int}'),
-(f'/\.goutputstream-({random6})$',                                                  '??????',               '@{rand6}'),
-(f'/\.uuid\.TMP-({random6})$',                                                      '??????',               '@{rand6}'),
-(f'/\.mutter-Xwaylandauth\.({random6})$',                                           '??????',               '@{rand6}'),
-(f'/file({random6})$',                                                              '??????',               '@{rand6}'),
-(f'/gnome-control-center-user-icon-({random6})$',                                   '??????',               '@{rand6}'),
-(f'/blkid\.tab-({random6})$',                                                       '??????',               '@{rand6}'),
-(f'/nvidia-xdriver-({random8})$',                                                   '????????',             '@{rand8}'),
-(f'/socket-({random8})$',                                                           '????????',             '@{rand8}'),
-(f'/pulse/({hex32C})-runtime(?:\.tmp)?$',                                           '[0-9a-f]*[0-9a-f]',    '@{hex32}'),  # temp pair? TODO
-(f'/({random6})\.(?:tmp|TMP)$',                                                     '??????',               '@{rand6}',             'owner'),
-(f'/({random8})\.(?:tmp|TMP)$',                                                     '????????',             '@{rand8}',             'owner'),
-(f'/({random10})\.(?:tmp|TMP)$',                                                    '??????????',           '@{rand10}',            'owner'),
-(f'^(/home/{Any})/',                                                                '@{HOME}',               None,                  'owner'), # before the last; tunable isn't matching unix lines
-(f'^@/home/({Any})/',                                                               '*',                     None,                  'owner'), # last; fallback for unix lines
-(f'^(/{oUsr}lib(?:exec|32|64)?)/',                                                   None,                  '@{lib}'),  # last <3
-(f'^({BinC})/',                                                                      None,                  '@{bin}'),  # last <3
-(f'^/({oUsr}s)bin/',                                                                '{,usr/}{,s}',           None),     # last <3 (to match unhandled)
-(f'^/({oUsr}local/)bin',                                                            '{,usr/}{,local/}',      None),     # last <3
-(f'^/({oUsrC})bin/',                                                                '{,usr/}',               None),     # last <3
-(f'^/({oUsrC})lib/',                                                                '{,usr/}',               None),     # last <3
+(rf'^/var/lib/gdm{o3}/\.config/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',              '[0-9]*',               '@{int}'),
+(rf'^/var/lib/gdm{o3}/\.local/share/xorg/Xorg\.(\d+)\.',                             '[0-9]*',               '@{int}'),
+(rf'^/var/lib/kubelet/pods/({uuidC})/',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^/var/lib/libvirt/swtpm/({uuidC})/',                                             '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^{homes}/xauth_({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
+(rf'^({user_cacheC})/',                                                               None,                  '@{user_cache_dirs}',   'owner'),
+(rf'^({user_configC})/',                                                              None,                  '@{user_config_dirs}',  'owner'),
+(rf'^{user_cache}/calibre/ev2/[a-z]/[a-z]{2}-({random8})/',                          '????????', 	      None,                  'owner'), # unconventional '_' random tail
+(rf'^{user_cache}/fontconfig/({hex32C})-',                                           '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(rf'^{user_cache}/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',             '??????',               '@{rand6}',             'owner'),
+(rf'^{user_cache}/fontconfig/({uuidC})-',                                            '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^{user_cache}/gnome-software/icons/({hex38C})-',                                 '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
+(rf'^{user_cache}/gstreamer-(\d+)/',                                                 '[0-9]*',               '@{int}',               'owner'),
+(rf'^{user_cache}/event-sound-cache\.tdb\.({hex32C})\.',                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(rf'^{user_cache}/mesa_shader_cache/({hex2C})/',                                     '[0-9a-f][0-9a-f]',     '@{h}@{h}',             'owner'),
+(rf'^{user_cache}/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',                   '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'), # temp pair? TODO
+(rf'^{user_cache}/thumbnails/[^/]+/({hex32C})\.',                                    '*',                    '@{hex32}',             'owner'),
+(rf'^{user_cache}/thumbnails/fail/gnome-thumbnail-factory/({hex32C})\.',             '*',                    '@{hex32}',             'owner'),
+(rf'^@?{user_cache}/ibus/dbus-({random8})$',                                         '????????',             '@{rand8}',             'owner'),
+(rf'^{user_config}/#(\d+)$',                                                         '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^{user_config}/ibus/bus/({hex32C})-',                                            '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+#r(f'^{user_config}/ibus/bus/{hex32}-unix({oWayland})-{ints}$',                       '{,-wayland}',           None,                  'owner'),
+(rf'^{user_config}/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',                          '[0-9]*',               '@{int}',               'owner'),
+(rf'^{user_config}/vlc/vlcrc\.(\d+)$',                                               '[0-9]*',               '@{int}',               'owner'),
+(rf'^{user_config}/vlc/vlc-qt-interface\.conf(|\.{random6})$',                       '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
+(rf'^{user_config}/qBittorrent/\.({random6})/',                                      '??????',               '@{rand6}',             'owner'),
+(rf'^{user_config}/qBittorrent/qBittorrent-data\.conf(|\.{random6})$',               '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
+(rf'^{user_config}/QtProject\.conf(|\.{random6})$',                                  '{,.??????}',           '{,.@{rand6}}',         'owner'), # unconventional random tail
+(rf'^{user_config}/qt(|5|6)(?:ct)?/',                                                '{,5,6}',                None,                  'owner'),
+(rf'^{user_share}/gvfs-metadata/root-({random8})\.',                                 '????????',             '@{rand8}',             'owner'),
+(rf'^{user_share}/kcookiejar/cookies\.({random6})$',                                 '??????',               '@{rand6}',             'owner'),
+(rf'^@({hex16})/',                                                                   '????????????????',      None),
+(rf'^@?/tmp/\.X11-unix/X(\d+)$',                                                     '[0-9]*',               '@{int}',               'owner'),
+(rf'^@?/tmp/\.ICE-unix/(\d+)$',                                                      '[0-9]*',               '@{int}'),
+(rf'^@?/tmp/dbus-({random8})$',                                                      '????????',             '@{rand8}' ,            'owner'),
+(rf'^@?/tmp/dbus-({random10})$',                                                     '??????????',           '@{rand10}' ,           'owner'),
+(rf'^@?/tmp/xauth_({random6})(?:-c|-l)?$',                                           '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.dotnet/shm/session(\d+)/',                                               '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^/tmp/\.coreclr\.({random6})/',                                                  '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.gnome_desktop_thumbnail\.({random6})$',                                  '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.mount_nextcl({random6})/',                                               '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.org\.chromium\.Chromium\.({random6})$',                                  '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.xfsm-ICE-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.t?X(\d+)-',                                                              '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/adb\.(\d+)\.',		                                             '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/akregator\.({random6})\.', 	                                             '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/akregator\.{random6}\.({random6})$',                                       '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/apt-changelog-({random6})/',                                               '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/apt-changelog-{random6}/\.apt-acquire-privs-test\.({random6})$',           '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/apt\.data\.({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/apt-dpkg-install-({random6})/',                                            '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/apt-key-gpghome\.({random10})/',                                           '??????????',           '@{rand10}',            'owner'),
+(rf'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x({hex16C})\.',                          '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
+(rf'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x{hex16}\.debian-stable\.(\d+)x?$',      '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^/tmp/aurules\.({random8})$',                                                    '????????',             '@{rand8}',             'owner'),
+(rf'^/tmp/calibre_\d+\.\d+\.\d+_tmp_({random8})/',                                   '????????',             '@{rand8}',             'owner'),
+(rf'^/tmp/clr-debug-pipe-(\d+)-',                                                    '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^/tmp/clr-debug-pipe-{ints}-(\d+)-',                                             '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^/tmp/config-err-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/dotnet-diagnostic-(\d+)-',                                                 '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^/tmp/dotnet-diagnostic-{ints}-(\d+)-',                                          '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^/tmp/dpkg\.({random6})/',                                                       '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/fz[0-9]temp-(\d+)/',                                                       '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/gdkpixbuf-xpm-tmp\.({random6})$',                                          '??????',               '@{rand6}' ,            'owner'),
+(rf'^/tmp/kcminit\.({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/librnnoise-(\d+)\.',                                                       '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/mozilla-temp-(\d+)$',                                                      '[0-9]*',    	     '@{int}',               'owner'),
+(rf'^/tmp/Mozilla({uuidC})-',                                                        '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^/tmp/Mozilla{literalBackslash}{{({uuidC}){literalBackslash}}}-',                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^/tmp/pty(\d+)/',                                                		     '[0-9]*',    	     '@{int}',               'owner'),
+(rf'^/tmp/QNapi\.(\d+)$',                                                            '[0-9]*',    	     '@{int}',               'owner'),
+(rf'^/tmp/qtsingleapp-quiter-(\d+)-',                                                '[0-9]*',    	     '@{int}',               'owner'),
+(rf'^/tmp/qtsingleapp-quiter-{ints}-(\d+)(?:-)?$',                                   '[0-9]*',    	     '@{int}',               'owner'),
+(rf'^/tmp/read-file(\d+)/',                                                          '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/(?:syscheck,sanity)-squashfs-(\d+)$',                                      '[0-9]*',               '@{int}'),
+(rf'^/tmp/server-(\d+)\.',                                                           '[0-9]*',               '@{int}'),
+(rf'^/tmp/sort({random6})$',                                                         '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/systemd-private-({hex32C})-',                                              '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(rf'^/tmp/systemd-private-{hex32}-[^/]+\.service-({random6})/',                      '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/sddm-:(\d+)-',           					             '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/sddm-:\d+-{random6}$',                      				     '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/talpid-openvpn-({uuidC})$',                                                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^/tmp/Temp-({uuidC})/',                                                          '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^/tmp/tmp\.({random10})/',                                                       '??????????',           '@{rand10}',            'owner'),
+(rf'^/tmp/tmp({random8})/',                                                          '????????',             '@{rand8}',             'owner'),
+(rf'^/tmp/user/{users}/tmp\.({random10})$',                                          '??????????',           '@{rand10}',            'owner'),
+(rf'^/tmp/({uuidC})$',                                                               '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^/tmp/wireshark_extcap_ciscodump_(\d+)_',                                        '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/zabbix_server_({random6})$',                                               '??????',               '@{rand6}',             'owner'),
+(rf'^{run}/cockpit/({random8})$',                                                    '????????',             '@{rand8}'),
+(rf'^{run}/gdm({o3})/',                                                              '{,3}',                  None),
+(rf'^{run}/netns/cni-({uuidC})$',                                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^{run}/NetworkManager/nm-openvpn-({uuidC})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^{run}/systemd/seats/seat(\d+)$',                                                '[0-9]*',               '@{int}'),
+(rf'^{run}/systemd/netif/links/(\d+)$',                                              '[0-9]*',               '@{int}'),
+(rf'^{run}/systemd/(?:sessions|inhibit)/(.+)\.ref$',                                 '*',                     None),
+(rf'^{run}/snapper-tools-({random6})/',                                              '??????',               '@{rand6}',             'owner'),
+(rf'^{run}/user/{users}/\.dbus-proxy/[a-z]+-bus-proxy-({random6})$',                 '??????',               '@{rand6}',             'owner'),
+(rf'^{run}/user/{users}/at-spi/bus_(\d+)$',                                          '[0-9]*',               '@{int}',               'owner'),
+(rf'^{run}/user/{users}/akregatorbWqrit\.(\d+)\.',                                   '[0-9]*',               '@{int}',               'owner'),
+(rf'^{run}/user/{users}/discover({random6})\.',                                      '??????',               '@{rand6}'),
+(rf'^{run}/user/{users}/kmozillahelper({random6})\.',                                '??????',               '@{rand6}',             'owner'),
+(rf'^{run}/user/{users}/kmozillahelper{random6}\.(\d+)\.',                           '[0-9]*[0-9]',          '@{int}',               'owner'),
+(rf'^{run}/user/{users}/wayland-(\d+)(?:\.lock)?$',                                  '[0-9]*',               '@{int}',               'owner'),
+(rf'^{run}/user/{users}/webkitgtk/[a-z]+-proxy-({random6})$',                        '??????',               '@{rand6}',             'owner'),
+(rf'^{run}/user/{users}/xauth_({random6})$',                                         '??????',               '@{rand6}',             'owner'),
+(rf'^{run}/user/{users}/pipewire-(\d+)$',                                            '[0-9]*',               '@{int}',               'owner'),
+(rf'^{run}/user/{users}/snap\.snapd-desktop-integration/wayland-cursor-shared-({random6})$', '??????',       '@{rand6}',             'owner'),
+(rf'^{sys}/block/zram(\d+)/',                                                        '[0-9]*',               '@{int}'),
+(rf'^{sys}/bus/pci/slots/(\d+)/',                                                    '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/{pciBus}/({pciIdC})/',                                            '????:??:??.?',         '@{pci_id}'),
+(rf'^{sys}/devices/{pciBus}/{pciId}/({pciIdC})/',                                    '????:??:??.?',         '@{pci_id}'),
+(rf'^{sys}/devices/{pciBus}/{pciId}/[^/]+/host(\d+)/',                               '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/{pciBus}/{pciId}/(?:{pciId}/)?drm/card(\d+)/',                    '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/{pciBus}/{pciId}/(?:{pciId}/)?drm/card{ints}/metrics/({uuidC})/', '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^{sys}/devices/pci({pciBusC})/',                                                 '????:??',               None),
+(rf'^{sys}/devices/({pciBusC})/',                                                     None,                  '@{pci_bus}'),
+(rf'^{sys}/devices/i2c-(\d+)/',                                                      '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/platform/serial\d+/tty/ttyS?(\d+)/',                              '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/system/cpu/cpu(\d+)/',                                            '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/system/cpu/cpufreq/policy(\d+)/',                                 '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/system/memory/memory(\d+)/',                                      '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/system/node/node(\d+)/',                                          '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/virtual/tty/tty(\d+)/',                                           '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/virtual/hwmon/hwmon(\d+)/',                                       '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/virtual/block/dm-(\d+)/',                                         '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/virtual/vc/[a-z]+(\d+)/',                                         '[0-9]*',               '@{int}'),
+(rf'^{sys}/devices/virtual/block/dm-(\d+)/',                                         '[0-9]*',               '@{int}'),
+(rf'^{sys}/fs/cgroup/user\.slice/user-{users}\.slice/user@@{users}\.service/app\.slice/app-gnome-org\.gnome\.Epiphany-(\d+)\.', '[0-9]*', '@{int}'),
+(rf'^{sys}/fs/btrfs/({uuidC})/',                                                     '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^{sys}/firmware/efi/efivars/[^/]+-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^{sys}/kernel/iommu_groups/(\d+)/',                                              '[0-9]*',               '@{int}'),
+(rf'^{proc}/{pids}/fdinfo/(\d+)$',                                                   '[0-9]*',               '@{int}',               'owner'),
+(rf'^{proc}/sys/net/ipv(4|6)/',                                                      '{4,6}',                 None),
+(rf'^{proc}/irq/(\d+)/',                                                             '[0-9]*',               '@{int}'),
+(rf'^/dev/cpu/(\d+)/',                                                               '[0-9]*',               '@{int}'),
+(rf'^/dev/dri/card(\d+)$',                                                           '[0-9]*',               '@{int}'),
+(rf'^/dev/dm-(\d+)$',                                                                '[0-9]*',               '@{int}'),
+(rf'^/dev/input/event(\d+)$',                                                        '[0-9]*',               '@{int}'),
+(rf'^/dev/loop(\d+)$',                                                               '[0-9]*',               '@{int}'),
+(rf'^/dev/media(\d+)$',                                                              '[0-9]*',               '@{int}'),
+(rf'^/dev/parport(\d+)$',                                                            '[0-9]*',               '@{int}'),
+(rf'^/dev/pts/(\d+)$',                                                               '[0-9]*',               '@{int}',               'owner'),
+(rf'^/dev/shm/sem\.({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
+(rf'^/dev/shm/sem\.mp-(\w+)$',                                                       '????????',              None,                  'owner'),
+(rf'^/dev/shm/dunst-({random6})$',                                                   '??????',               '@{rand6}',             'owner'),
+(rf'^/dev/tty(\d+)$',                                                                '[0-9]*',               '@{int}',               'owner'),
+(rf'^/dev/ttyS(\d+)$',                                                               '[0-9]*',               '@{int}',               'owner'),
+(rf'^/dev/vfio/(\d+)$',                                                              '[0-9]*',               '@{int}'),
+(rf'^/dev/video(\d+)$',                                                              '[0-9]*',               '@{int}'),
+(rf'/#(\d+)$',                                                                       '[0-9]*[0-9]',          '@{int}'),
+(rf'/\.goutputstream-({random6})$',                                                  '??????',               '@{rand6}'),
+(rf'/\.uuid\.TMP-({random6})$',                                                      '??????',               '@{rand6}'),
+(rf'/\.mutter-Xwaylandauth\.({random6})$',                                           '??????',               '@{rand6}'),
+(rf'/file({random6})$',                                                              '??????',               '@{rand6}'),
+(rf'/gnome-control-center-user-icon-({random6})$',                                   '??????',               '@{rand6}'),
+(rf'/blkid\.tab-({random6})$',                                                       '??????',               '@{rand6}'),
+(rf'/nvidia-xdriver-({random8})$',                                                   '????????',             '@{rand8}'),
+(rf'/socket-({random8})$',                                                           '????????',             '@{rand8}'),
+(rf'/pulse/({hex32C})-runtime(?:\.tmp)?$',                                           '[0-9a-f]*[0-9a-f]',    '@{hex32}'),  # temp pair? TODO
+(rf'/({random6})\.(?:tmp|TMP)$',                                                     '??????',               '@{rand6}',             'owner'),
+(rf'/({random8})\.(?:tmp|TMP)$',                                                     '????????',             '@{rand8}',             'owner'),
+(rf'/({random10})\.(?:tmp|TMP)$',                                                    '??????????',           '@{rand10}',            'owner'),
+(rf'^(/home/{Any})/',                                                                '@{HOME}',               None,                  'owner'), # before the last; tunable isn't matching unix lines
+(rf'^@/home/({Any})/',                                                               '*',                     None,                  'owner'), # last; fallback for unix lines
+(rf'^(/{oUsr}lib(?:exec|32|64)?)/',                                                   None,                  '@{lib}'),  # last <3
+(rf'^({BinC})/',                                                                      None,                  '@{bin}'),  # last <3
+(rf'^/({oUsr}s)bin/',                                                                '{,usr/}{,s}',           None),     # last <3 (to match unhandled)
+(rf'^/({oUsr}local/)bin',                                                            '{,usr/}{,local/}',      None),     # last <3
+(rf'^/({oUsrC})bin/',                                                                '{,usr/}',               None),     # last <3
+(rf'^/({oUsrC})lib/',                                                                '{,usr/}',               None),     # last <3
     ]
     tunables = [  # default tunables only
-(f'^/{oUsr}lib/({multiarchC})/',                                                    '@{multiarch}',          None),
-(f'^({etc_ro})/',                                                                   '@{etc_ro}',             None),
-(f'^/dev/shm/lttng-ust-wait-{ints}-({usersC})$',                                    '@{uid}',                None,                  'owner'),
-(f'^/var/log/journal/{hex32}/user-({usersC})(?:@|\.)',                              '@{uid}',                None),
-(f'^/var/log/Xorg\.pid-({pidsC})\.',                                                '@{pid}',                None,                  'owner'),
-(f'^{homes}/(Desktop)/',                                                            '@{XDG_DESKTOP_DIR}',    None,                  'owner'),
-(f'^{homes}/(Downloads)/',                                                          '@{XDG_DOWNLOAD_DIR}',   None,                  'owner'),
-(f'^{homes}/(Templates)/',                                                          '@{XDG_TEMPLATES_DIR}',  None,                  'owner'),
-(f'^{homes}/(Public)/',                                                             '@{XDG_PUBLICSHARE_DIR}',None,                  'owner'),
-(f'^{homes}/(Documents)/',                                                          '@{XDG_DOCUMENTS_DIR}',  None,                  'owner'),
-(f'^{homes}/(Music)/',                                                              '@{XDG_MUSIC_DIR}',      None,                  'owner'),
-(f'^{homes}/(Pictures)/',                                                           '@{XDG_PICTURES_DIR}',   None,                  'owner'),
-(f'^{homes}/(Videos)/',                                                             '@{XDG_VIDEOS_DIR}',     None,                  'owner'),
-(f'^({user_shareC})/',                                                              '@{user_share_dirs}',    None,                  'owner'),
-(f'^({runC})/',                                                                     '@{run}',                None),
-(f'^{run}/user/({usersC})/',                                                        '@{uid}',                None,                  'owner'),
-(f'^{run}/systemd/users/({usersC})$',                                               '@{uid}',                None),
-(f'^({sysC})/',                                                                     '@{sys}',                None),
-(f'^{sys}/fs/cgroup/user\.slice/user-({usersC})\.',                                 '@{uid}',                None),
-(f'^{sys}/fs/cgroup/user\.slice/user-{users}\.slice/user@({usersC})\.',             '@{uid}',                None),  # '@' is a string
-(f'^({procC})/',                                                                    '@{PROC}',               None),
-(f'^{proc}/({pidsC})/',                                                             '@{pid}',                None,                  'owner'),
-(f'^{proc}/{pids}/task/({tidsC})/',                                                 '@{tid}',                None,                  'owner'),
-(f'^/tmp/tracker-extract-3-files.({usersC})/',                                      '@{uid}',                None,                  'owner'),
-(f'^/tmp/user/({usersC})/',                                                         '@{uid}',                None,                  'owner'),
-(f'^/tmp/user/{users}/Temp-({uuidC})/',                                             '@{uuid}',               None,                  'owner'),
+(rf'^/{oUsr}lib/({multiarchC})/',                                                    '@{multiarch}',          None),
+(rf'^({etc_ro})/',                                                                   '@{etc_ro}',             None),
+(rf'^/dev/shm/lttng-ust-wait-{ints}-({usersC})$',                                    '@{uid}',                None,                  'owner'),
+(rf'^{runJ}/log/journal/{hex32}/user-({usersC})(?:@|\.)',                            '@{uid}',                None),
+(rf'^/var/log/Xorg\.pid-({pidsC})\.',                                                '@{pid}',                None,                  'owner'),
+(rf'^{homes}/(Desktop)/',                                                            '@{XDG_DESKTOP_DIR}',    None,                  'owner'),
+(rf'^{homes}/(Downloads)/',                                                          '@{XDG_DOWNLOAD_DIR}',   None,                  'owner'),
+(rf'^{homes}/(Templates)/',                                                          '@{XDG_TEMPLATES_DIR}',  None,                  'owner'),
+(rf'^{homes}/(Public)/',                                                             '@{XDG_PUBLICSHARE_DIR}',None,                  'owner'),
+(rf'^{homes}/(Documents)/',                                                          '@{XDG_DOCUMENTS_DIR}',  None,                  'owner'),
+(rf'^{homes}/(Music)/',                                                              '@{XDG_MUSIC_DIR}',      None,                  'owner'),
+(rf'^{homes}/(Pictures)/',                                                           '@{XDG_PICTURES_DIR}',   None,                  'owner'),
+(rf'^{homes}/(Videos)/',                                                             '@{XDG_VIDEOS_DIR}',     None,                  'owner'),
+(rf'^({user_shareC})/',                                                              '@{user_share_dirs}',    None,                  'owner'),
+(rf'^({runC})/',                                                                     '@{run}',                None),
+(rf'^{run}/user/({usersC})/',                                                        '@{uid}',                None,                  'owner'),
+(rf'^{run}/systemd/users/({usersC})$',                                               '@{uid}',                None),
+(rf'^({sysC})/',                                                                     '@{sys}',                None),
+(rf'^{sys}/fs/cgroup/user\.slice/user-({usersC})\.',                                 '@{uid}',                None),
+(rf'^{sys}/fs/cgroup/user\.slice/user-{users}\.slice/user@({usersC})\.',             '@{uid}',                None),  # '@' is a string
+(rf'^({procC})/',                                                                    '@{PROC}',               None),
+(rf'^{proc}/({pidsC})/',                                                             '@{pid}',                None,                  'owner'),
+(rf'^{proc}/{pids}/task/({tidsC})/',                                                 '@{tid}',                None,                  'owner'),
+(rf'^/tmp/tracker-extract-3-files.({usersC})/',                                      '@{uid}',                None,                  'owner'),
+(rf'^/tmp/user/({usersC})/',                                                         '@{uid}',                None,                  'owner'),
+(rf'^/tmp/user/{users}/Temp-({uuidC})/',                                             '@{uuid}',               None,                  'owner'),
     ]
     lineType = findLineType(l)
     if lineType != 'UNIX':
@@ -324,7 +368,7 @@ def adaptFilePath(l, key, ruleStyle):
         l[key] = path
 
     # Backslash special characters after decoding and before PCRE replacement
-    pcreChars = (']', '[', '*', '}', '{', '?', '^')  # literal backslashes aren't handled
+    pcreChars = (']', '[', '*', '}', '{', '?', '^', '"', "'")  # literal backslashes aren't handled
     for i in pcreChars:
         occurences = range(l.get(key).count(i))
         for j in occurences:
@@ -378,33 +422,34 @@ def adaptFilePath(l, key, ruleStyle):
 def adaptDbusPaths(lines, ruleStyle):
 
     # First capture but not (second) match; 'C' for capture
-    Any    = '(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
-    usersC = '(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'
-    hex32C = '(?:[0-9a-fA-F]{32})'
-    uuidC  = '(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})'
-    regexpToMacro = [
+    Any    = r'(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
+    usersC = r'(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'
+    hex32C = r'(?:[0-9a-fA-F]{32})'
+    uuidC  = r'(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})'
+    regexpToMacro = (
  # regex                                              # default  # apparmor.d
-(f'^/org/freedesktop/ColorManager/devices/({Any})$',  '*',       None),
-(f'^/org/freedesktop/login1/session/({Any})$',        '*',       None),
-(f'^/org/freedesktop/systemd1/unit/({Any})$',         '*',       None),
-(f'^/org/freedesktop/UDisks2/drives/({Any})$',        '*',       None),
-(f'^/org/freedesktop/UDisks2/block_devices/({Any})$', '*',       None),
-(f'^/org/freedesktop/UPower/devices/({Any})$',        '*',       None),
+(rf'^/org/freedesktop/ColorManager/devices/({Any})$',  '*',       None),
+(rf'^/org/freedesktop/login1/session/({Any})$',        '*',       None),
+(rf'^/org/freedesktop/systemd1/unit/({Any})$',         '*',       None),
+(rf'^/org/freedesktop/UDisks2/drives/({Any})$',        '*',       None),
+(rf'^/org/freedesktop/UDisks2/block_devices/({Any})$', '*',       None),
+(rf'^/org/freedesktop/UPower/devices/({Any})$',        '*',       None),
  # Capturing *any* goes above
-(f'/User({usersC})(?:/|$)',                           '@{uid}',  None),
-(f'/({uuidC})(?:/|$)',                                '*',       '@{uuid}'),
-(f'/icc_({hex32C})$',                                 '*',       '@{hex32}'),
-(f'/(\d+)$',                                          '[0-9]*',  '@{int}'),
-(f'/(\d+)/',                                          '[0-9]*',  '@{int}'),  # separate to mitigate overlaping
-(f'/_(\d+)$',                                         '[0-9]*',  '@{int}'),
-(f'/Client(\d+)(?:/|$)',                              '[0-9]*',  '@{int}'),
-(f'/ServiceBrowser(\d+)(?:/|$)',                      '[0-9]*',  '@{int}'),
-(f'/seat(\d+)$',                                      '[0-9]*',  '@{int}'),
-(f'/Source_(\d+)(?:/|$)',                             '[0-9]*',  '@{int}'),
-(f'/prompt/u(\d+)$',                                  '[0-9]*',  '@{int}'),
-(f'/Prompt/p(\d+)$',                                  '[0-9]*',  '@{int}'),
-(f'/loop(\d+)$',                                      '[0-9]*',  '@{int}'),  # unreachable?
-    ]
+(rf'/User({usersC})(?:/|$)',                           '@{uid}',  None),
+(rf'/({uuidC})(?:/|$)',                                '*',       '@{uuid}'),
+(rf'/org/bluez/obex/({uuidC})$',                       '*',       '@{uuid}'),
+(rf'/icc_({hex32C})$',                                 '*',       '@{hex32}'),
+(rf'/(\d+)$',                                          '[0-9]*',  '@{int}'),
+(rf'/(\d+)/',                                          '[0-9]*',  '@{int}'),  # separate to mitigate overlaping
+(rf'/_(\d+)$',                                         '[0-9]*',  '@{int}'),
+(rf'/Client(\d+)(?:/|$)',                              '[0-9]*',  '@{int}'),
+(rf'/ServiceBrowser(\d+)(?:/|$)',                      '[0-9]*',  '@{int}'),
+(rf'/seat(\d+)$',                                      '[0-9]*',  '@{int}'),
+(rf'/Source_(\d+)(?:/|$)',                             '[0-9]*',  '@{int}'),
+(rf'/prompt/u(\d+)$',                                  '[0-9]*',  '@{int}'),
+(rf'/Prompt/p(\d+)$',                                  '[0-9]*',  '@{int}'),
+(rf'/loop(\d+)$',                                      '[0-9]*',  '@{int}'),  # unreachable?
+    )
 
     for profile in lines:
         for l in lines[profile]:
@@ -435,12 +480,12 @@ def findTempTailPair(filename, ruleStyle):
     '''Intended only for temp pairs'''
     # Fallback to default if style have 'None'
     tempRegexesToMacro = (
-        # regex                 # default style     # apparmor.d style
-        ('\.tmp$',             '{,.tmp}',           None),
-        ('~$',                 '{,~}',              None),
-        ('\.[A-Z0-9]{6}$',     '{,.??????}',        '{,.@{rand6}}'),
-        ('\.tmp[A-Z0-9]{6}$',  '{,.tmp??????}',     '{,.tmp@{rand6}}'),
-        ('\.tmp[0-9]{4}$',     '{,.tmp????}',       '{,.tmp@{int}}'),
+        # regex                 # default style      # apparmor.d style
+        (r'\.tmp$',             '{,.tmp}',           None),
+        (r'~$',                 '{,~}',              None),
+        (r'\.[A-Z0-9]{6}$',     '{,.??????}',        '{,.@{rand6}}'),
+        (r'\.tmp[A-Z0-9]{6}$',  '{,.tmp??????}',     '{,.tmp@{rand6}}'),
+        (r'\.tmp[0-9]{4}$',     '{,.tmp????}',       '{,.tmp@{int}}'),
     )
     # TODO
     # /usr/share/applications/mimeinfo.cache
@@ -471,41 +516,44 @@ def highlightWords(string_, isHighlightVolatile=True):
     ignorePath = '/usr/share'
 
     sensitivePatterns = (  # with Red; re.I
-        '/\.ssh/(id[^.]+)(?!.*\.pub)(?:/|$)',
-        '/(ssh_host_[^/]+_key(?:[^.]|))(?!.*\.pub)',
-        '(?<!pubring\.orig\.)(?<!pubring\.)(?<!mouse)(?<!turn|whis|flun|dove|alar|rick|apt-|gtk-)(?<!hot|hoc|don|mon|tur|coc|joc|lac|buc|soc|haw|pun|tac|flu|dar|sna|smo|cri|coo|pin|din|dic)(?<!ca|mi)(key)(?!button|stroke|board|punch|less|code|pal|pad|gen|\.pub|word\.cpython|-manager-qt_ykman\.png|-personalization-gui\.png|-personalization-gui_yubikey-personalization-gui\.png)', # only key; NOT: turkey, keyboard, keygen, etc
-        '(?<!/ISRG_)(?<!grass|snake|birth|colic|coral|arrow|blood|orris|bread|squaw|fever|itter|inger)(?<!worm|alum|rose|club|pink|beet|poke|musk|fake)(?<!tap|che|red|she)(?<!sc|ch)(root)(?!stalk|worm|stock|less|s)', # only root; NOT: grassroots, rootless, chroot, etc
-        '(?<!non)(secret)(?!agogue|ion|ary|ari)', # only secret, secrets; NOT: nonsecret, secretary, etc
-        '(?<!non|set)(priv)(?!ate\.CoreLib|atdocent|atdozent|iledge|ates|ation|ateer|atise|arize|atist|ation|er|et|es|ed|ie|al|y|e)', # only priv, private; NOT: nonprivate, privatise, etc
-        '(?<!com|sur|out)(pass)(?!word-symbolic\.svg|epied|erine|enger|along|ible|erby|able|less|band|ivi|ive|age|ade|ion|ed|el|er|wd)', # only pass, password; NOT: compass, passage, etc
-        '(?<!over|fore)(?<!be)(shadow)(?!coord|graph|iest|like|less|map|ing|ily|ers|box|ier|er|ed|y|s)', # only shadow; NOT: foreshadow, shadows, etc
-        '(?<!na|sa|ac)(cred)(?!ulous|ulity|uliti|enza|ence|ibl|ibi|al|it|o)', # only cred, creds, credentials; NOT: sacred, credence, etc
-        '(?:/|^)(0)(?:/|$)', # standalone zero: 0, /0, /0/; NOT: a0, 0a, 01, 10, 101, etc
-        '^(?:/proc|@{PROC})/(1)/',
-        '^(?:/proc|@{PROC})(?:/\d+|/@{pids?})?/(cmdline)$',
-        '(cookies)\.sqlite(?:-wal)?$',
-        '(cookiejar)',
+        r'/\.ssh/(id[^.]+)(?!.*\.pub)(?:/|$)',
+        r'/(ssh_host_[^/]+_key(?:[^.]|))(?!.*\.pub)',
+        r'(?<!pubring\.orig\.)(?<!pubring\.)(?<!mouse)(?<!turn|whis|flun|dove|alar|rick|apt-|gtk-)(?<!hot|hoc|don|mon|tur|coc|joc|lac|buc|soc|haw|pun|tac|flu|dar|sna|smo|cri|coo|pin|din|dic)(?<!ca|mi)(key)(?!button|stroke|board|punch|less|code|pal|pad|gen|\.pub|word\.cpython|-manager-qt_ykman\.png|-personalization-gui\.png|-personalization-gui_yubikey-personalization-gui\.png)', # only key; NOT: turkey, keyboard, keygen, etc
+        r'(?<!/ISRG_)(?<!grass|snake|birth|colic|coral|arrow|blood|orris|bread|squaw|fever|itter|inger)(?<!worm|alum|rose|club|pink|beet|poke|musk|fake)(?<!tap|che|red|she)(?<!sc|ch)(root)(?!stalk|worm|stock|less|s)', # only root; NOT: grassroots, rootless, chroot, etc
+        r'(?<!non)(secret)(?!agogue|ion|ary|ari)', # only secret, secrets; NOT: nonsecret, secretary, etc
+        r'(?<!non|set)(priv)(?!ate\.CoreLib|atdocent|atdozent|iledge|ates|ation|ateer|atise|arize|atist|ation|er|et|es|ed|ie|al|y|e)', # only priv, private; NOT: nonprivate, privatise, etc
+        r'(?<!com|sur|out)(pass)(?!word-symbolic\.svg|epied|erine|enger|along|ible|erby|able|less|band|ivi|ive|age|ade|ion|ed|el|er|wd)', # only pass, password; NOT: compass, passage, etc
+        r'(?<!over|fore)(?<!be)(shadow)(?!coord|graph|iest|like|less|map|ing|ily|ers|box|ier|er|ed|y|s)', # only shadow; NOT: foreshadow, shadows, etc
+        r'(?<!na|sa|ac)(cred)(?!ulous|ulity|uliti|enza|ence|ibl|ibi|al|it|o)', # only cred, creds, credentials; NOT: sacred, credence, etc
+        r'(?:/|^)(0)(?:/|$)', # standalone zero: 0, /0, /0/; NOT: a0, 0a, 01, 10, 101, etc
+        r'^(?:/proc|@{PROC})/(1)/',
+        r'^(?:/proc|@{PROC})(?:/\d+|/@{pids?})?/(cmdline)$',
+        r'(cookies)\.sqlite(?:-wal)?$',
+        r'(cookiejar)',
         )
-    random6  = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9]|base\d\d|\d{5}x|sha\d{3}|[a-z]{5}\d|UPower)[0-9a-zA-Z]{6}' # aBcXy9, AbcXyz, ABCXY9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1, base35, 12345x, abcxy9
-    random8  = '(?<!arphic-)(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9]|[a-z]{7}\d|GeoClue\d)[0-9a-zA-Z]{8}' # aBcDwXy9, AbcdWxyz, ABCDWXY9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1, abcdwxy9
-    random10 = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9]|PackageKit|PolicyKit\d)[0-9a-zA-Z]{10}' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9, ABCDEVWXY9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1, PackageKit
+    random6  = r'(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9]|base\d\d|\d{5}x|sha\d{3}|[a-z]{5}\d|UPower)[0-9a-zA-Z]{6}' # aBcXy9, AbcXyz, ABCXY9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1, base35, 12345x, abcxy9
+    random8  = r'(?<!arphic-)(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9]|[a-z]{7}\d|GeoClue\d)[0-9a-zA-Z]{8}' # aBcDwXy9, AbcdWxyz, ABCDWXY9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1, abcdwxy9
+    random10 = r'(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9]|PackageKit|PolicyKit\d)[0-9a-zA-Z]{10}' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9, ABCDEVWXY9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1, PackageKit
     volatilePatterns = (  # with Yellow
-        '/#(\d+)$',  # trailing number with leading hash sign
-        '[-./@](1000)(?:/|$)',  # first user id
-       f'[-.]({random6})(?:/|$)',
-       f'[-.]({random8})(?:/|$)',
-       f'[-.]({random10})(?:/|$)',
-        '[-.](?![0-9]{8}|[a-z]{8})([0-9a-z]{8})\.log$',
-        '[-.](?![0-9]{8}|[A-Z]{8})([0-9A-Z]{8})\.log$',
-        '(?=[^0-9a-fA-F]0x([0-9a-fA-F]{16})(?:[^0-9a-fA-F]|$))', # hex address
-        '(?=[^0-9a-fA-F]([0-9a-fA-F]{32})(?:[^0-9a-fA-F]|$))',   # standalone MD5
-        '(?=[^0-9a-fA-F]([0-9a-fA-F]{38})(?:[^0-9a-fA-F]|$))',   # ??
-        '(?=[^0-9a-fA-F]([0-9a-fA-F]{56})(?:[^0-9a-fA-F]|$))',   # standalone SHA224
-        '(?=[^0-9a-fA-F]([0-9a-fA-F]{64})(?:[^0-9a-fA-F]|$))',   # standalone SHA256
-        '(?=[^0-9a-fA-F]([0-9a-fA-F]{96})(?:[^0-9a-fA-F]|$))',   # standalone SHA384
-        '(?=[^0-9a-fA-F]([0-9a-fA-F]{128})(?:[^0-9a-fA-F]|$))',  # standalone SHA512
-        '(?=[^0-9a-fA-F]([0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})(?:[^0-9a-fA-F]|$))', # standalone UUID
-        '^@?/home/([^/]+)/', # previously unmatched homes
+        r'/#(\d+)$',  # trailing number with leading hash sign
+        r'[-./@](1000)(?:/|$)',  # first user id
+       rf'[-.]({random6})(?:/|$)',
+       rf'[-.]({random8})(?:/|$)',
+       rf'[-.]({random10})(?:/|$)',
+       rf'/(?:var/)?tmp/({random6})(?:/|$)',
+       rf'/(?:var/)?tmp/({random8})(?:/|$)',
+       rf'/(?:var/)?tmp/({random10})(?:/|$)',
+        r'[-.](?![0-9]{8}|[a-z]{8})([0-9a-z]{8})\.log$',
+        r'[-.](?![0-9]{8}|[A-Z]{8})([0-9A-Z]{8})\.log$',
+        r'(?=[^0-9a-fA-F]0x([0-9a-fA-F]{16})(?:[^0-9a-fA-F]|$))', # hex address
+        r'(?=[^0-9a-fA-F]([0-9a-fA-F]{32})(?:[^0-9a-fA-F]|$))',   # standalone MD5
+        r'(?=[^0-9a-fA-F]([0-9a-fA-F]{38})(?:[^0-9a-fA-F]|$))',   # ??
+        r'(?=[^0-9a-fA-F]([0-9a-fA-F]{56})(?:[^0-9a-fA-F]|$))',   # standalone SHA224
+        r'(?=[^0-9a-fA-F]([0-9a-fA-F]{64})(?:[^0-9a-fA-F]|$))',   # standalone SHA256
+        r'(?=[^0-9a-fA-F]([0-9a-fA-F]{96})(?:[^0-9a-fA-F]|$))',   # standalone SHA384
+        r'(?=[^0-9a-fA-F]([0-9a-fA-F]{128})(?:[^0-9a-fA-F]|$))',  # standalone SHA512
+        r'(?=[^0-9a-fA-F]([0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})(?:[^0-9a-fA-F]|$))', # standalone UUID
+        r'^@?/home/([^/]+)/', # previously unmatched homes
     )
 
     if not string_.startswith(ignorePath):
@@ -580,6 +628,12 @@ def findExecType(path):
         'md5sum',                  'zip',
         'mktemp',                  'zstd',
         'mv',                      'setfacl',
+        'unexpand',                'tsort',
+        'truncate',                'yes',
+        'sum',                     'install',
+        'fold',                    'factor',
+        'fmt',                     'split',
+        'b2sum',                   'base32',
     }
     always_Px = {
         'ps',
@@ -616,71 +670,71 @@ def adaptProfileAutoTransitions(l):
 
 def isBaseAbstractionTransition(l, profile_):
     '''Only for file lines. Must be done after normalization and before adaption. Temporary solution?'''
-    multiarch   = '(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?|@{multiarch})'
-    proc        = '(?:/proc|@{PROC})'
-    etc_ro      = '(?:/usr/etc|/etc|@{etc_ro})'
-    run         = '(?:/var/run|/run|@{run})'
-    sys         = '(?:/sys|@{sys})'
+    multiarch   = r'(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?|@{multiarch})'
+    proc        = r'(?:/proc|@{PROC})'
+    etc_ro      = r'(?:/usr/etc|/etc|@{etc_ro})'
+    run         = r'(?:/var/run|/run|@{run})'
+    sys         = r'(?:/sys|@{sys})'
 
     baseAbsRules = {  # re.match
-       f'^/dev/log$': {'w'},
-       f'^/dev/u?random$': {'r'},
-       f'^{run}/uuidd/request$': {'r'},
-       f'^{etc_ro}/locale/.+': {'r'},
-       f'^{etc_ro}/locale\.alias$': {'r'},
-       f'^{etc_ro}/localtime$': {'r'},
-       f'^/etc/writable/localtime$': {'r'},
-       f'^/usr/share/locale-bundle/.+': {'r'},
-       f'^/usr/share/locale-langpack/.+': {'r'},
-       f'^/usr/share/locale/.+': {'r'},
-       f'^/usr/share/.+/locale/.+': {'r'},
-       f'^/usr/share/zoneinfo/.*': {'r'},
-       f'^/usr/share/X11/locale/.+': {'r'},
-       f'^{run}/systemd/journal/dev-log$': {'w'},
-       f'^{run}/systemd/journal/socket$': {'w'},
-       f'^{run}/systemd/journal/stdout$': {'r', 'w'},
-       f'^/(|usr/)lib(|32|64)/locale/.+': {'m', 'r'},
-       f'^/(|usr/)lib(|32|64)/gconv/[^/]+\.so$': {'m', 'r'},
-       f'^/(|usr/)lib(|32|64)/gconv/gconv-modules(|[^/]+)$': {'m', 'r'},
-       f'^/(|usr/)lib/{multiarch}/gconv/[^/]+\.so$': {'m', 'r'},
-       f'^/(|usr/)lib/{multiarch}/gconv/gconv-modules(|[^/]+)$': {'m', 'r'},
-       f'^{etc_ro}/bindresvport\.blacklist$': {'r'},
-       f'^{etc_ro}/ld\.so\.cache$': {'m', 'r'},
-       f'^{etc_ro}/ld\.so\.conf$': {'r'},
-       f'^{etc_ro}/ld\.so\.conf\.d/(|[^/]+\.conf)$': {'r'},
-       f'^{etc_ro}/ld\.so\.preload$': {'r'},
-       f'^/(|usr/)lib(|32|64)/ld(|32|64)-[^/]+\.so$': {'m', 'r'},
-       f'^/(|usr/)lib/{multiarch}/ld(|32|64)-[^/]+\.so$': {'m', 'r'},
-       f'^/(|usr/)lib/tls/i686/(cmov|nosegneg)/ld-[^/]+\.so$': {'m', 'r'},
-       f'^/(|usr/)lib/i386-linux-gnu/i686/(cmov|nosegneg)/ld-[^/]+\.so$': {'m', 'r'},
-       f'^/opt/[^/]+-linux-uclibc/lib/ld-uClibc(|[^/]+)so(|[^/]+)$': {'m', 'r'},
-       f'^/(|usr/)lib(|32|64)/.+': {'r'},
-       f'^/(|usr/)lib(|32|64)/.+\.so(|[^/]+)$': {'m', 'r'},
-       f'^/(|usr/)lib/{multiarch}/.+': {'r'},
-       f'^/(|usr/)lib/{multiarch}/.+\.so(|[^/]+)$': {'m', 'r'},
-       f'^/(|usr/)lib/tls/i686/(cmov|nosegneg)/[^/]+\.so(|[^/]+)$': {'m', 'r'},
-       f'^/(|usr/)lib/i386-linux-gnu/i686/(cmov|nosegneg)/[^/]+\.so(|[^/]+)$': {'m', 'r'},
-       f'^/(|usr/)lib(|32|64)/\.lib[^/]+\.so[^/]+\.hmac$': {'r'},
-       f'^/(|usr/)lib/{multiarch}/\.lib[^/]+\.so[^/]+\.hmac$': {'r'},
-       f'^/dev/null$': {'r', 'w',},
-       f'^/dev/zero$': {'r', 'w',},
-       f'^/dev/full$': {'r', 'w',},
-       f'^{proc}/sys/kernel/version$': {'r'},
-       f'^{proc}/sys/kernel/ngroups_max$': {'r'},
-       f'^{proc}/meminfo$': {'r'},
-       f'^{proc}/stat$': {'r'},
-       f'^{proc}/cpuinfo$': {'r'},
-       f'^{sys}/devices/system/cpu/(|online)$': {'r'},
-       f'^{proc}/\d+/(maps|auxv|status)$': {'r'},
-       f'^{proc}/crypto/[^/]+$': {'r'},
-       f'^/usr/share/common-licenses/.+': {'r'},
-       f'^{proc}/filesystems$': {'r'},
-       f'^{proc}/sys/vm/overcommit_memory$': {'r'},
-       f'^{proc}/sys/kernel/cap_last_cap$': {'r'},
+       rf'^/dev/log$': {'w'},
+       rf'^/dev/u?random$': {'r'},
+       rf'^{run}/uuidd/request$': {'r'},
+       rf'^{etc_ro}/locale/.+': {'r'},
+       rf'^{etc_ro}/locale\.alias$': {'r'},
+       rf'^{etc_ro}/localtime$': {'r'},
+       rf'^/etc/writable/localtime$': {'r'},
+       rf'^/usr/share/locale-bundle/.+': {'r'},
+       rf'^/usr/share/locale-langpack/.+': {'r'},
+       rf'^/usr/share/locale/.+': {'r'},
+       rf'^/usr/share/.+/locale/.+': {'r'},
+       rf'^/usr/share/zoneinfo/.*': {'r'},
+       rf'^/usr/share/X11/locale/.+': {'r'},
+       rf'^{run}/systemd/journal/dev-log$': {'w'},
+       rf'^{run}/systemd/journal/socket$': {'w'},
+       rf'^{run}/systemd/journal/stdout$': {'r', 'w'},
+       rf'^/(|usr/)lib(|32|64)/locale/.+': {'m', 'r'},
+       rf'^/(|usr/)lib(|32|64)/gconv/[^/]+\.so$': {'m', 'r'},
+       rf'^/(|usr/)lib(|32|64)/gconv/gconv-modules(|[^/]+)$': {'m', 'r'},
+       rf'^/(|usr/)lib/{multiarch}/gconv/[^/]+\.so$': {'m', 'r'},
+       rf'^/(|usr/)lib/{multiarch}/gconv/gconv-modules(|[^/]+)$': {'m', 'r'},
+       rf'^{etc_ro}/bindresvport\.blacklist$': {'r'},
+       rf'^{etc_ro}/ld\.so\.cache$': {'m', 'r'},
+       rf'^{etc_ro}/ld\.so\.conf$': {'r'},
+       rf'^{etc_ro}/ld\.so\.conf\.d/(|[^/]+\.conf)$': {'r'},
+       rf'^{etc_ro}/ld\.so\.preload$': {'r'},
+       rf'^/(|usr/)lib(|32|64)/ld(|32|64)-[^/]+\.so$': {'m', 'r'},
+       rf'^/(|usr/)lib/{multiarch}/ld(|32|64)-[^/]+\.so$': {'m', 'r'},
+       rf'^/(|usr/)lib/tls/i686/(cmov|nosegneg)/ld-[^/]+\.so$': {'m', 'r'},
+       rf'^/(|usr/)lib/i386-linux-gnu/i686/(cmov|nosegneg)/ld-[^/]+\.so$': {'m', 'r'},
+       rf'^/opt/[^/]+-linux-uclibc/lib/ld-uClibc(|[^/]+)so(|[^/]+)$': {'m', 'r'},
+       rf'^/(|usr/)lib(|32|64)/.+': {'r'},
+       rf'^/(|usr/)lib(|32|64)/.+\.so(|[^/]+)$': {'m', 'r'},
+       rf'^/(|usr/)lib/{multiarch}/.+': {'r'},
+       rf'^/(|usr/)lib/{multiarch}/.+\.so(|[^/]+)$': {'m', 'r'},
+       rf'^/(|usr/)lib/tls/i686/(cmov|nosegneg)/[^/]+\.so(|[^/]+)$': {'m', 'r'},
+       rf'^/(|usr/)lib/i386-linux-gnu/i686/(cmov|nosegneg)/[^/]+\.so(|[^/]+)$': {'m', 'r'},
+       rf'^/(|usr/)lib(|32|64)/\.lib[^/]+\.so[^/]+\.hmac$': {'r'},
+       rf'^/(|usr/)lib/{multiarch}/\.lib[^/]+\.so[^/]+\.hmac$': {'r'},
+       rf'^/dev/null$': {'r', 'w',},
+       rf'^/dev/zero$': {'r', 'w',},
+       rf'^/dev/full$': {'r', 'w',},
+       rf'^{proc}/sys/kernel/version$': {'r'},
+       rf'^{proc}/sys/kernel/ngroups_max$': {'r'},
+       rf'^{proc}/meminfo$': {'r'},
+       rf'^{proc}/stat$': {'r'},
+       rf'^{proc}/cpuinfo$': {'r'},
+       rf'^{sys}/devices/system/cpu/(|online)$': {'r'},
+       rf'^{proc}/\d+/(maps|auxv|status)$': {'r'},
+       rf'^{proc}/crypto/[^/]+$': {'r'},
+       rf'^/usr/share/common-licenses/.+': {'r'},
+       rf'^{proc}/filesystems$': {'r'},
+       rf'^{proc}/sys/vm/overcommit_memory$': {'r'},
+       rf'^{proc}/sys/kernel/cap_last_cap$': {'r'},
        # crypto include (oldest)
-       f'^{etc_ro}/gcrypt/random\.conf$': {'r'},
-       f'^{proc}/sys/crypto/[^/]+$': {'r'},
-       f'^/(etc/|usr/share/)crypto-policies/[^/]+/[^/]+\.txt$': {'r'},
+       rf'^{etc_ro}/gcrypt/random\.conf$': {'r'},
+       rf'^{proc}/sys/crypto/[^/]+$': {'r'},
+       rf'^/(etc/|usr/share/)crypto-policies/[^/]+/[^/]+\.txt$': {'r'},
     }
 
     result = False
@@ -862,14 +916,14 @@ def normalizeJournalLine(rawLine, args):
             continue
 
         elif key == 'name' and \
-             re.match(':\d+\.\d+', val):
+             re.match(r':\d+\.\d+', val):
 
             if args.style == 'AppArmor.d':
                 pcreStyle = '.@{int}'
             else:
                 pcreStyle = '.[0-9]*'
 
-            adaptedName = re.sub('\.\d+$', pcreStyle, val)
+            adaptedName = re.sub(r'\.\d+$', pcreStyle, val)
             lineDict.update({key: adaptedName})
 
         elif val:
@@ -916,9 +970,9 @@ def normalizeProfileName(l):
 
 def getBaseBin(path):
 
-    grn  = '\x1b\[0;32m' # (escaped) regular green
-    rst  = '\x1b\[0m'    # (escaped) reset
-    regexp = re.match(f'^(?:/(?:usr/|{grn}{{\,usr/}}{rst}|{grn}{{usr/\,}}{rst})?bin|{grn}@{{bin}}{rst})/([^/]+)$', path)  # 'sbin' isn't covered
+    grn  = r'\x1b\[0;32m' # (escaped) regular green
+    rst  = r'\x1b\[0m'    # (escaped) reset
+    regexp = re.match(rf'^(?:/(?:usr/|{grn}{{\,usr/}}{rst}|{grn}{{usr/\,}}{rst})?bin|{grn}@{{bin}}{rst})/([^/]+)$', path)  # 'sbin' isn't covered
     if regexp:
         result = regexp.group(1)
     else:
@@ -2111,7 +2165,7 @@ def colorizeLines(plainLines):
             l['flags'] = flags
 
         if findLineType(l).startswith('DBUS'):
-            if re.match(':\d+\.(?:\[0-9\]\*|@\{int\})$', l.get('name')):
+            if re.match(r':\d+\.(?:\[0-9\]\*|@\{int\})$', l.get('name')):
                 if l['name'].endswith('@{int}'):  # known style characteristic
                     pcreStyle = '.@{int}'
                 else:
@@ -2152,7 +2206,7 @@ def colorizeLines(plainLines):
 def adjustPadding(str_, targetPadding_):
     '''By decolorizing (a copy). Temp?'''
 
-    strRe = re.findall('\\033\[\d;\d{2}m|\\033\[0m', str_)
+    strRe = re.findall(r'\\033\[\d;\d{2}m|\\033\[0m', str_)
     if strRe:
         result = targetPadding_ + len(''.join(strRe))
     else:
@@ -2259,7 +2313,7 @@ def display(plainLines, padding_, previousTimestamp, args):
             toDisplay = f'{prefix}{rule}'
 
         if   previousTimestamp == -10:       # poisoning
-            prefixSign = colorize('!', 'Magenta', 1)
+            prefixSign = colorize('!', 'Red', 1)
 
         elif previousTimestamp == -3:        # unknown
             prefixSign = colorize('*', 'Yellow', 1)
@@ -2290,7 +2344,7 @@ def findPreviousTimestamp(pathStr):
             if dirPath.stat().st_uid != 0 or oct(dirPath.stat().st_mode) != '0o40700':
                 result = -10  # poisoning
                 poisoning = colorize('poisoning', 'Magenta')
-                errors.append(f'Potential timestamp {poisoning}!')
+                errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 21  # exit code
             else:
                 result = int(path.read_text())
     
@@ -2304,8 +2358,9 @@ def findPreviousTimestamp(pathStr):
             result = -2  # unknown
 
     except PermissionError as e:
-        errors[f"{e} - AppArmor profile haven't been updated?"] = 15  # exit code
-        result = -3  # unknown
+        result = -10  # poisoning
+        poisoning = colorize('poisoning', 'Magenta')
+        errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 21  # exit code
 
     except:  # never fail
         result = -3  # unknown
@@ -2321,7 +2376,7 @@ def rewriteLatestTimestamp(pathStr, timestamp):
     if dirPath.exists():
         if dirPath.stat().st_uid != 0 or oct(dirPath.stat().st_mode) != '0o40700':
             poisoning = colorize('poisoning', 'Magenta')
-            errors[f'Potential timestamp {poisoning}!'] = 20  # exit code
+            errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 20  # exit code
 
     else:
         dirPath.mkdir(mode=0o700)
@@ -2334,7 +2389,8 @@ def rewriteLatestTimestamp(pathStr, timestamp):
         isSuccessfullWrite = True
 
     except PermissionError as e:
-        errors[f"{e} - AppArmor profile haven't been updated?"] = 15  # exit code
+        poisoning = colorize('poisoning', 'Magenta')
+        errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 20  # exit code
 
     except:  # never fail
         pass
@@ -2385,8 +2441,11 @@ def displayLegend():
     targetMis_bBlkB = colorize('P', 'Bright Black', 7)
     members_Wht     = colorize('{AddMatch,Hello}', 'White')
     attachD_bYlw    = colorize('attach_disconnected', 'Bright Yellow')
-    fileI_bYlw      = colorize('file_inherit', 'Bright Yellow')
     comments        = colorize('# no peer label', 'Bright Cyan')
+    fileI_bYlw      = colorize('file_inherit', 'Bright Yellow')
+    warnings        = colorize('warning', 'Yellow')
+    errors          = colorize('error', 'Red')
+    poisoning       = colorize('poisoning', 'Magenta')
 
     legend = f"""
 {aster_WhtB}[{rule}]                              First run
@@ -2396,9 +2455,9 @@ def displayLegend():
  
  [{suggest_Grn}] diffs=/run                 Suggestion with a diff (replacement)
  [/f.conf{tail_Wht}]                 Suggestion without a diff (addition)
- [/cert.{key_Red}]                         Sensitive text patterns or errors
- [/f.conf.{tail_Ylw}]                    Volatile text patterns or warnings
- [/file r{write_Grn}]                          Access suggestion optimised from declared to usable
+ [/cert.{key_Red}]                         Sensitive path patterns - close attention advised
+ [/f.conf.{tail_Ylw}]                    Volatile path patterns - not necessarily suitable in it's current form
+ [/file r{write_Grn}]                          Access suggestion optimised from declared 'dc' to usable 'w'
  [/bin/cat {read_Wht}x]                       'x' is always accompanied by 'r'
  [/bin/sed r{iExec_Wht}x]                      'sed' always have 'i' execution type
  [/bin/f {targetMis_bBlkB}x]                         Profile transition not found
@@ -2407,9 +2466,9 @@ def displayLegend():
  [key{equals_bBlu}value] a{comma_bBlu}b                     Delimiters
  [member={members_Wht}]           DBus members grouped together without additions
 
- parent{delimiter_Blu}child [{rule}]                 Delimiter for automatically generated subprofiles
+ parent{delimiter_Blu}child [{rule}]                 Delimiter for automatically separated subprofiles
  parent [/file r{commW_Blu}] comm=parent,{commN_Blu}  'w' came from 'grep' child. Line changed identification as parent. 'base' abstraction lines are ommited
- parent [/file {parentR_Blu}{write_Grn}] comm=parent,{commS_Blu}   Parent's 'r' is consumed. Child's 'c' or 'd' is optimised and took presedence
+ parent [/file {parentR_Blu}{write_Grn}] comm=parent,{commS_Blu}   Parent's 'r' is consumed. Child's 'd' or 'c' is optimised and took presedence
                                                            
  [{rule}]                              Came from 'AVC'
  {bracketL_CyaBg}{rule}{bracketR_CyaBg}                              Came from 'USER_AVC'
@@ -2420,8 +2479,12 @@ def displayLegend():
  {bracketL_RedBg}{rule}{bracketR_RedBg}                              Came from 'USER_AVC', but not a DBus line. Or came from 'AVC', but not from 'system' bus (potential journal poisoning)
  {bracketL_MgnBg}{rule}{bracketR_MgnBg}                              Came from DBus, but not a DBus line (potential journal poisoning)
 
- [flags=({attachD_bYlw})] operation={fileI_bYlw}   Not necessarily required
  [{rule},  {comments}]                               Comments
+ [flags=({attachD_bYlw})] operation={fileI_bYlw}   Not necessarily required
+
+ This is a {warnings}                                      Warnings
+ This is an {errors}                                       Errors
+ This is {poisoning}                                      Potential attacks on input data
 
 Note: you might want to change your palette to more distinctive colors"""
 
@@ -2563,7 +2626,7 @@ $ sudo apt install python3-systemd  {Debian}
 
     if 'unix'    in args.type:
         unixLines    = mergeDictsByKeyPair(unixLines, 'mask', 'operation')
-        #unixLines    = mergeCommMasks(unixLines)
+        unixLines    = mergeCommMasks(unixLines)
 
     if 'cap'     in args.type:
         capLines     = mergeExactDuplicates(capLines)
@@ -2595,6 +2658,14 @@ $ sudo apt install python3-systemd  {Debian}
     if not isSupportedDistro():
         not_supported = colorize('not supported', 'Yellow')
         errors[f'This distro is {not_supported}. Watch out for inconsistencies.'] = 10  # exit code
+
+    if os.getuid() != 0:
+        as_root_user = colorize('as root user', 'Yellow')
+        errors[f'Designed to be run {as_root_user}. Will not rely on timestamps. Watch out for inconsistencies.'] = 8
+
+    if not rawLines:
+        taken_over = colorize('taken over', 'Red')
+        errors[f"Empty journal! Was {taken_over} by 'auditd'?"] = 100
 
     isFirst = True
     highestErrorCode = 0

@@ -28,7 +28,7 @@ profile aa_suggest @{exec_path} {
   /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/ r,
   /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/system.journal r,
   /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/system@[0-9a-f]*[0-9a-f]-*.journal{,~} r,
-  /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/user-@{uid}@[0-9a-f]*[0-9a-f]-*.journal r,
+  /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/user-@{uid}@[0-9a-f]*[0-9a-f]-*.journal{,~} r,
   /{run,var}/log/journal/[0-9a-f]*[0-9a-f]/user-@{uid}.journal r,
 
   /etc/machine-id r,
