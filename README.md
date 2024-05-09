@@ -67,15 +67,28 @@ $ sudo apparmor_parser --add /etc/apparmor.d/aa_suggest                      # c
 ### for BETA
 - better padding
 - compatibility with more distros
+- switching from journal to `audit` entirely
 
 ### for 1.0
-- journal caching
 - boot ID selection
-- `--nocolor`
+- `--no-color`
 
 ## Supported distros
 - Debian 12
 - Ubuntu 22.04
+- Ubuntu 24.04 (`audit` fix)
+- OpenSUSE Tumbleweed (`audit` fix)
+
+## Known issues
+On certain distros/configurations AppArmor logs in journal could be taken over by `audit` package when it's installed. To overcome this, `systemd-journald-audit.socket` could be TEMPORARILY enabled:
+```sh
+sudo systemctl enable systemd-journald-audit.socket
+```
+Return to default state when not needed:
+```sh
+sudo systemctl disable systemd-journald-audit.socket
+```
+Restart the system to take effect.
 
 ## Deinstallation
 ```sh
