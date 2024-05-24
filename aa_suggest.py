@@ -289,7 +289,7 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^/tmp/systemd-private-({hex32C})-',                                              '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
 (rf'^/tmp/systemd-private-{hex32}-[^/]+\.service-({random6})/',                      '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/sddm-:(\d+)-',           					             '[0-9]*',               '@{int}',               'owner'),
-(rf'^/tmp/sddm-:{ints}-{random6}$',                    				     '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/sddm-:{ints}-({random6})$',                                                '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/talpid-openvpn-({uuidC})$',                                                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
 (rf'^/tmp/Temp-({uuidC})/',                                                          '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
 (rf'^/tmp/tmp\.({random10})/',                                                       '??????????',           '@{rand10}',            'owner'),
