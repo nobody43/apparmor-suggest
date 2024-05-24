@@ -280,6 +280,8 @@ class colorizationTests(unittest.TestCase):
         red = '\x1b[0;31m'
         ylw = '\x1b[0;33m'
         rst = '\x1b[0m'
+        num_ = '[0-9]{,[0-9]}'
+        int_ = '@{int}'
         pathsAndResults = (
 # Sensitive
 ('/proc/0/', f'/proc/{red}0{rst}/'),
@@ -455,6 +457,10 @@ class colorizationTests(unittest.TestCase):
 ('-0327a5b9f676b500327a5b9f676b50542f4d2a58f766a19542f', '-0327a5b9f676b500327a5b9f676b50542f4d2a58f766a19542f'),  # incorrect
 ('screen/ccdda718_5099_4509_a984_05540a913901', f'screen/{ylw}ccdda718_5099_4509_a984_05540a913901{rst}'),
 ('/var/log/journal/e561af98c3584a29a4eab8a761aceaf9/a0d3d01e32484f6b92ad0327b593962b-000000000000d3fc-0005f87685c0290f.journal' , f'/var/log/journal/{ylw}e561af98c3584a29a4eab8a761aceaf9{rst}/{ylw}a0d3d01e32484f6b92ad0327b593962b{rst}-000000000000d3fc-0005f87685c0290f.journal'),
+('/python3/dist-packages/dateutil/__pycache__/',    f'/python3/dist-packages/{ylw}dateutil{rst}/__pycache__/'),
+('/python3.10/dist-packages/dateutil/__pycache__/', f'/python3.10/dist-packages/{ylw}dateutil{rst}/__pycache__/'),
+(f'/python3.{num_}/dist-packages/dateutil/__pycache__/', f'/python3.{num_}/dist-packages/{ylw}dateutil{rst}/__pycache__/'),
+(f'/python3.{int_}/dist-packages/dateutil/__pycache__/', f'/python3.{int_}/dist-packages/{ylw}dateutil{rst}/__pycache__/'),
         )
         for p,r in pathsAndResults:
             self.assertEqual(highlightWords(p), r)
@@ -565,7 +571,23 @@ class regexTests(unittest.TestCase):
 (   {'path': '/sys/devices/pci0000:00/0000:00:1f.3/drm/card1/metrics/e12693c1-5c3d-4fe4-8fc2-6c3ae26b04d3/',           'operation': {'open'}},
     {'path': '@{sys}/devices/pci????:??/????:??:??.?/drm/card[0-9]*/metrics/[0-9a-f]*[0-9a-f]/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(18, 25), '0000:00'], [(26, 38), '0000:00:1f.3'], [(47, 53), '1'], [(62, 79), 'e12693c1-5c3d-4fe4-8fc2-6c3ae26b04d3']]}),
 (   {'path': '/sys/devices/pci0000:00/0000:00:1f.3/0000:00:00.2/', 'operation': {'open'}},
-        {'path': '@{sys}/devices/pci????:??/????:??:??.?/????:??:??.?/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(18, 25), '0000:00'], [(26, 38), '0000:00:1f.3'], [(39, 51), '0000:00:00.2']]}),
+    {'path': '@{sys}/devices/pci????:??/????:??:??.?/????:??:??.?/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(18, 25), '0000:00'], [(26, 38), '0000:00:1f.3'], [(39, 51), '0000:00:00.2']]}),
+(   {'path': '/tmp/calibre_5.37.0_tmp_trrspk_e/zr_8mcrzlog.txt', 'operation': {'open'}},
+    {'path': '/tmp/calibre_5.[0-9]{,[0-9]}.[0-9]{,[0-9]}_tmp_????????/????????log.txt', 'operation': {'open'}, 'path_diffs': [[(15, 28), '37'], [(29, 42), '0'], [(47, 55), 'trrspk_e'], [(56, 64), 'zr_8mcrz']], 'path_prefix': 'owner'}),
+(   {'path': '/etc/polkit-1/rules.d/01-local',          'operation': {'open'}},
+    {'path': '/etc/polkit-1/rules.d/[0-9][0-9]-local',  'operation': {'open'}, 'path_diffs': [[(22, 32), '01']]}),
+(   {'path': '/etc/dir/subdir/conf.d/00-local',         'operation': {'open'}},
+    {'path': '/etc/dir/subdir/conf.d/[0-9][0-9]-local', 'operation': {'open'}, 'path_diffs': [[(23, 33), '00']]}),
+(   {'path': '/home/user/.cache/kcrash-metadata/plasmashell.d5856b1aeb3505a99ebc25cc92607f81.1234.ini', 'operation': {'open'}},
+    {'path': '@{HOME}/.cache/kcrash-metadata/plasmashell.[0-9a-f]*[0-9a-f].[0-9]*.ini', 'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(43, 60), 'd5856b1aeb3505a99ebc25cc92607f81'], [(61, 67), '1234']], 'path_prefix': 'owner'}),
+(   {'path': '/var/lib/gdm3/.cache/ibus/dbus-KeTdY3dU',    'operation': {'open'}},
+    {'path': '/var/lib/gdm{,3}/.cache/ibus/dbus-????????', 'operation': {'open'}, 'path_diffs': [[(12, 16), '3'], [(34, 42), 'KeTdY3dU']]}),
+(   {'path': '/var/lib/gdm/.config/ibus/bus/d5856b1aeb3505a99ebc25cc92607f81-unix-1',    'operation': {'open'}},
+    {'path': '/var/lib/gdm{,3}/.config/ibus/bus/[0-9a-f]*[0-9a-f]-unix-[0-9]*', 'operation': {'open'}, 'path_diffs': [[(12, 16), ''], [(34, 51), 'd5856b1aeb3505a99ebc25cc92607f81'], [(57, 63), '1']]}),
+(   {'path': '/var/lib/gdm/.local/share/xorg/Xorg.1.log',          'operation': {'open'}},
+    {'path': '/var/lib/gdm{,3}/.local/share/xorg/Xorg.[0-9]*.log', 'operation': {'open'}, 'path_diffs': [[(12, 16), ''], [(40, 46), '1']]}),
+(   {'path': '/var/lib/gdm/.local/file',                'operation': {'open'}},
+    {'path': '/var/lib/gdm{,3}/.local/file',            'operation': {'open'}, 'path_diffs': [[(12, 16), '']]}),
     # UNIX sockets
 (   {'path': '@/home/user/.cache/ibus/dbus-qGivRGmK',   'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
     {'path': '@/home/*/.cache/ibus/dbus-????????',      'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(7, 8), 'user'], [(26, 34), 'qGivRGmK']], 'path_prefix': 'owner'}),  # not actually 'path', but 'addr'
@@ -573,6 +595,8 @@ class regexTests(unittest.TestCase):
     {'path': '@/tmp/dbus-????????',                     'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(11, 19), 'IgfNnTvp']], 'path_prefix': 'owner'}),
 (   {'path': '@63cf34db7fbab75f/bus/sshd/system',       'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
     {'path': '@????????????????/bus/sshd/system',       'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(1, 17), '63cf34db7fbab75f']]}),
+(   {'path': '@/var/lib/gdm3/.cache/ibus/dbus-KeTdY3dU',    'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
+    {'path': '@/var/lib/gdm{,3}/.cache/ibus/dbus-????????', 'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(13, 17), '3'], [(35, 43), 'KeTdY3dU']]}),
     # Other traps
 (   {'path': '/lib/d/aarch64-linux-musl/',              'operation': {'open'}},
     {'path': '/{,usr/}lib/d/aarch64-linux-musl/',       'operation': {'open'}, 'path_diffs': [[(1, 8), '']]}),
@@ -663,7 +687,7 @@ class regexTests(unittest.TestCase):
 (   {'path': '/tmp/Mozilla{c843286e-fb29-4915-aa17-db3a6df86497}-',            'operation': {'open'}},
     {'path': r'/tmp/Mozilla\{@{uuid}\}-',                  'operation': {'open'}, 'path_diffs': [[(12, 13), ''], [(14, 21), 'c843286e-fb29-4915-aa17-db3a6df86497'], [(21, 22), '']], 'path_prefix': 'owner'}),
 (   {'path': '/var/lib/gdm/.cache/mesa_shader_cache/5b/630568b4dc7a281bca68647783eb1b338fd9ce', 'operation': {'open'}},
-    {'path': '/var/lib/gdm{,3}/.cache/mesa_shader_cache/@{h}@{h}/@{hex}', 'operation': {'open'}, 'path_diffs': [[(12, 16), ''], [(42, 50), '5b'],[(51, 57), '630568b4dc7a281bca68647783eb1b338fd9ce']]}),
+    {'path': '@{gdm_cache_dirs}/mesa_shader_cache/@{hex2}/@{hex38}', 'operation': {'open'}, 'path_diffs': [[(0, 17), '/var/lib/gdm/.cache'], [(36, 43), '5b'],[(44, 52), '630568b4dc7a281bca68647783eb1b338fd9ce']]}),
 (   {'path': '/usr/lib/kde/',                           'operation': {'open'}},
     {'path': '@{lib}/kde{,3,4}/',                       'operation': {'open'}, 'path_diffs': [[(0, 6), '/usr/lib'], [(10, 16), '']]}),
 (   {'path': '/lib/kde4/',                              'operation': {'open'}},
@@ -681,6 +705,24 @@ class regexTests(unittest.TestCase):
     {'path': '@{sys}/devices/@{pci_bus}/@{pci_id}/drm/card@{int}/metrics/@{uuid}/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(15, 25), 'pci0000:00'], [(26, 35), '0000:00:1f.3'], [(44, 50), '1'], [(59, 66), 'e12693c1-5c3d-4fe4-8fc2-6c3ae26b04d3']]}),
 (   {'path': '/sys/devices/pci0000:00/0000:00:1f.3/0000:00:00.2/', 'operation': {'open'}},
     {'path': '@{sys}/devices/@{pci_bus}/@{pci_id}/@{pci_id}/', 'operation': {'open'}, 'path_diffs': [[(0, 6), '/sys'], [(15, 25), 'pci0000:00'], [(26, 35), '0000:00:1f.3'], [(36, 45), '0000:00:00.2']]}),
+(   {'path': '/etc/polkit-1/rules.d/01-local',          'operation': {'open'}},
+    {'path': '/etc/polkit-1/rules.d/@{int2}-local',  'operation': {'open'}, 'path_diffs': [[(22, 29), '01']]}),
+(   {'path': '/etc/dir/subdir/conf.d/00-local',         'operation': {'open'}},
+    {'path': '/etc/dir/subdir/conf.d/@{int2}-local', 'operation': {'open'}, 'path_diffs': [[(23, 30), '00']]}),
+(   {'path': '/home/user/.cache/kcrash-metadata/plasmashell.d5856b1aeb3505a99ebc25cc92607f81.1234.ini', 'operation': {'open'}},
+    {'path': '@{user_cache_dirs}/kcrash-metadata/plasmashell.@{hex32}.@{int4}.ini', 'operation': {'open'}, 'path_diffs': [[(0, 18), '/home/user/.cache'], [(47, 55), 'd5856b1aeb3505a99ebc25cc92607f81'], [(56, 63), '1234']], 'path_prefix': 'owner'}),
+(   {'path': '/var/lib/gdm3/.cache/ibus/dbus-KeTdY3dU',    'operation': {'open'}},
+    {'path': '@{gdm_cache_dirs}/ibus/dbus-@{rand8}', 'operation': {'open'}, 'path_diffs': [[(0, 17), '/var/lib/gdm3/.cache'], [(28, 36), 'KeTdY3dU']]}),
+(   {'path': '/var/lib/gdm3/.config/ibus/bus/d5856b1aeb3505a99ebc25cc92607f81-unix-1',    'operation': {'open'}},
+    {'path': '@{gdm_config_dirs}/ibus/bus/@{hex32}-unix-@{int}', 'operation': {'open'}, 'path_diffs': [[(0, 18), '/var/lib/gdm3/.config'], [(28, 36), 'd5856b1aeb3505a99ebc25cc92607f81'], [(42, 48), '1']]}),
+(   {'path': '/var/lib/gdm/.local/share/xorg/Xorg.1.log',      'operation': {'open'}},
+    {'path': '@{gdm_share_dirs}/xorg/Xorg.@{int}.log',  'operation': {'open'}, 'path_diffs': [[(0, 17), '/var/lib/gdm/.local/share'], [(28, 34), '1']]}),
+(   {'path': '/var/lib/gdm/.local/file',                'operation': {'open'}},
+    {'path': '@{gdm_local_dirs}/file',                  'operation': {'open'}, 'path_diffs': [[(0, 17), '/var/lib/gdm/.local']]}),
+(   {'path': '/var/lib/sddm/.local/share/',              'operation': {'open'}},
+    {'path': '@{sddm_share_dirs}/',  'operation': {'open'}, 'path_diffs': [[(0, 18), '/var/lib/sddm/.local/share']]}),
+(   {'path': '/var/lib/lightdm/.local/share/',          'operation': {'open'}},
+    {'path': '@{lightdm_share_dirs}/',                  'operation': {'open'}, 'path_diffs': [[(0, 21), '/var/lib/lightdm/.local/share']]}),
     # UNIX sockets
 (   {'path': '@/home/user/.cache/ibus/dbus-qGivRGmK',   'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
     {'path': '@/home/*/.cache/ibus/dbus-????????',      'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(7, 8), 'user'], [(26, 34), 'qGivRGmK']], 'path_prefix': 'owner'}),
@@ -688,6 +730,8 @@ class regexTests(unittest.TestCase):
     {'path': '@/tmp/dbus-????????',                     'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(11, 19), 'IgfNnTvp']], 'path_prefix': 'owner'}),
 (   {'path': '@63cf34db7fbab75f/bus/sshd/system',       'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
     {'path': '@????????????????/bus/sshd/system',       'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(1, 17), '63cf34db7fbab75f']]}),
+(   {'path': '@/var/lib/gdm3/.cache/ibus/dbus-KeTdY3dU',    'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream'},
+    {'path': '@/var/lib/gdm{,3}/.cache/ibus/dbus-????????', 'operation': {'connect'}, 'family': 'unix', 'sock_type': 'stream', 'path_diffs': [[(13, 17), '3'], [(35, 43), 'KeTdY3dU']]}),
     # Other traps
 (   {'path': '/lib/d/aarch64-linux-musl/',              'operation': {'open'}},
     {'path': '@{lib}/d/aarch64-linux-musl/',            'operation': {'open'}, 'path_diffs': [[(0, 6), '/lib']]}),

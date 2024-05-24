@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 # SPDX-License-Identifier: GPL-3.0-only
-# Version: 0.8.10
+# Version: 0.8.11
 
 # line, l - single log line in form of dictionary
 # normalize - prepare line values for a possible merge; make keys consistent
@@ -41,21 +41,27 @@ def adaptFilePath(l, key, ruleStyle):
     # Always surround these helpers with other charactes or new/endlines
     # Capturing group must not be optional '?', but always provide at least empty '|' match
     # Mix of regex and pcre styles!; 'C' for capture
-    random6  = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9])(?:[0-9a-zA-Z]{6})' # aBcXy9, AbcXyz, abcxy9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1
-    random8  = '(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9])(?:[0-9a-zA-Z]{8})' # aBcDwXy9, AbcdWxyz, abcdwxy9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1
-    random10 = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9])(?:[0-9a-zA-Z]{10})' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1
+    random6   = '(?![0-9]{6}|[a-z]{6}|[A-Z]{6}|[A-Z][a-z]{5}|[A-Z][a-z]{4}[0-9])(?:[0-9a-zA-Z]{6})' # aBcXy9, AbcXyz, abcxy9; NOT 123789, abcxyz, ABCXYZ, Abcxyz, Abcxy1
+    random8   = '(?![0-9]{8}|[a-z]{8}|[A-Z]{8}|[A-Z][a-z]{7}|[A-Z][a-z]{6}[0-9])(?:[0-9a-zA-Z]{8})' # aBcDwXy9, AbcdWxyz, abcdwxy9; NOT: 12346789, abcdwxyz, ABCDWXYZ, Abcdwxyz, Abcdwxy1
+    random10  = '(?![0-9]{10}|[a-z]{10}|[A-Z]{10}|[A-Z][a-z]{9}|[A-Z][a-z]{8}[0-9])(?:[0-9a-zA-Z]{10})' # aBcDeVwXy9, AbcdeVwxyz, abcdevwxy9; NOT: 1234567890, abcdevwxyz, ABCDEVWXYZ, Abcdevwxyz, Abcdevwxy1
+    random8u  = '(?:\w{8}|\?\?\?\?\?\?\?\?)'
+    random8uC = '(?:\w{8})'
     users        = r'(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9}|@{uid})'
     usersC       = r'(?:[0-9]|[1-9][0-9]{1,8}|[1-4][0-9]{9})'
-    hex2         = r'(?:[0-9a-fA-F]{2}|\[0-9a-f\]\[0-9a-f\]|@{h}@{h})'
+    hex2         = r'(?:[0-9a-fA-F]{2}|\[0-9a-f\]\[0-9a-f\]|@{hex2})'
     hex2C        = r'(?:[0-9a-fA-F]{2})'
     hex16        = r'(?:[0-9a-fA-F]{16}|\[0-9a-f\]\*\[0-9a-f\]|@{hex16})'
     hex16C       = r'(?:[0-9a-fA-F]{16})'
     hex32        = r'(?:[0-9a-fA-F]{32}|\[0-9a-f\]\*\[0-9a-f\]|@{hex32})'
     hex32C       = r'(?:[0-9a-fA-F]{32})'
-    hex38        = r'(?:[0-9a-fA-F]{38}|\[0-9a-f\]\*\[0-9a-f\]|@{hex})'
+    hex38        = r'(?:[0-9a-fA-F]{38}|\[0-9a-f\]\*\[0-9a-f\]|@{hex38})'
     hex38C       = r'(?:[0-9a-fA-F]{38})'
-    ints         = r'(?:\d+|\[0-9\]\*|@{int})'
-    intsC        = r'(?:\d+|\[0-9\]\*|@{int})'
+    hex64        = r'(?:[0-9a-fA-F]{64}|\[0-9a-f\]\*\[0-9a-f\]|@{hex64})'
+    hex64C       = r'(?:[0-9a-fA-F]{64})'
+    ints         = r'(?:\d+|\[0-9\]\*|\[0-9\]{\,\[0-9\]}|@{int})'
+    ints2        = r'(?:\d{2}|\[0-9\]\[0-9\]|@{int2})'
+    ints4        = r'(?:\d{4}|\[0-9\]\*\[0-9\]|@{int4})'
+    ints4C       = r'(?:\d{4})'
     uuid         = r'(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12}|\[0-9a-f\]\*\[0-9a-f\]|@{uuid})'
     uuidC        = r'(?:[0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})'
     etc_ro       = r'(?:/usr/etc|@{etc_ro})'
@@ -88,6 +94,30 @@ def adaptFilePath(l, key, ruleStyle):
     oUsrC        = r'(?:usr/)?'                   # optional '/usr'; capture
     Any          = r'(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
     literalBackslash = '\\\\'
+    gdm_cache       = r'(?:/var/lib/gdm(?:3|{\,3})?/\.cache|@{gdm_cache_dirs})'
+    gdm_cacheC      = r'(?:/var/lib/gdm(?:3|{\,3})?/\.cache)'
+    gdm_config      = r'(?:/var/lib/gdm(?:3|{\,3})?/\.config|@{gdm_config_dirs})'
+    gdm_configC     = r'(?:/var/lib/gdm(?:3|{\,3})?/\.config)'
+    gdm_local       = r'(?:/var/lib/gdm(?:3|{\,3})?/\.local(?!/share)|@{gdm_local_dirs})'
+    gdm_localC      = r'(?:/var/lib/gdm(?:3|{\,3})?/\.local(?!/share))'
+    gdm_share       = r'(?:/var/lib/gdm(?:3|{\,3})?/\.local/share|@{gdm_share_dirs})'
+    gdm_shareC      = r'(?:/var/lib/gdm(?:3|{\,3})?/\.local/share)'
+    sddm_cache      = r'(?:/var/lib/sddm/\.cache|@{sddm_cache_dirs})'
+    sddm_cacheC     = r'(?:/var/lib/sddm/\.cache)'
+    sddm_config     = r'(?:/var/lib/sddm/\.config|@{sddm_config_dirs})'
+    sddm_configC    = r'(?:/var/lib/sddm/\.config)'
+    sddm_local      = r'(?:/var/lib/sddm/\.local(?!/share)|@{sddm_local_dirs})'
+    sddm_localC     = r'(?:/var/lib/sddm/\.local(?!/share))'
+    sddm_share      = r'(?:/var/lib/sddm/\.local/share|@{sddm_share_dirs})'
+    sddm_shareC     = r'(?:/var/lib/sddm/\.local/share)'
+    lightdm_cache   = r'(?:/var/lib/lightdm/\.cache|@{lightdm_cache_dirs})'
+    lightdm_cacheC  = r'(?:/var/lib/lightdm/\.cache)'
+    lightdm_config  = r'(?:/var/lib/lightdm/\.config|@{lightdm_config_dirs})'
+    lightdm_configC = r'(?:/var/lib/lightdm/\.config)'
+    lightdm_local   = r'(?:/var/lib/lightdm/\.local(?!/share)|@{lightdm_local_dirs})'
+    lightdm_localC  = r'(?:/var/lib/lightdm/\.local(?!/share))'
+    lightdm_share   = r'(?:/var/lib/lightdm/\.local/share|@{lightdm_share_dirs})'
+    lightdm_shareC  = r'(?:/var/lib/lightdm/\.local/share)'
 
     # Special cases <3
     pciBus = r'(?:(?:pci)?[0-9a-f]{4}:[0-9a-f]{2}|(?:pci)?\?\?\?\?:\?\?|@{pci_bus})'
@@ -122,10 +152,12 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^/usr/share/icu/{ints}\.(\d+)/',                                                 '[0-9]*',               '@{int}'),
 (rf'^/usr/share/qt(|5|6)(?:ct)?/',                                                   '{,5,6}',                None),
 (rf'^/{oUsr}lib/kde(|3|4)/',                                                         '{,3,4}',                None),
+(rf'^/etc/{Any}/(?:{Any}/)?[a-z]+\.d/({ints2})-',                                    '[0-9][0-9]',           '@{int2}'),
 (rf'^/etc/apparmor\.d/libvirt/libvirt-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (rf'^/etc/gdm({o3})/',                                                               '{,3}',                  None),
 (rf'^/etc/gtk-([2-4])\.0/',                                                          '[2-4]',                 None),
 (rf'^/etc/python3\.(\d+)/',                                                          '[0-9]{,[0-9]}',        '@{int}'),
+(rf'^/etc/systemd/network/({ints2})-',                                               '[0-9][0-9]',           '@{int2}'),
 (rf'^/var/backups/apt\.extended_states\.(\d+)$',                                     '[0-9]*',    	     '@{int}',               'owner'),
 (rf'^/var/cache/fontconfig/({hex32C})-',                                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
 (rf'^/var/cache/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',               '??????',               '@{rand6}',             'owner'),
@@ -149,29 +181,43 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^/var/lib/cni/results/cni-loopback-({uuidC})-lo$',                               '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (rf'^/var/lib/ca-certificates/openssl/({random8})\.',                                '????????',             '@{rand8}'),
 (rf'^/var/lib/update-notifier/tmp\.({random10})$',                                   '??????????',           '@{rand10}'),
-(rf'^@?/var/lib/gdm({o3})/',                                                         '{,3}',                  None),
-(rf'^@?/var/lib/gdm{o3}/\.cache/ibus/dbus-({random8})$',                             '????????',             '@{rand8}'),
-(rf'^/var/lib/gdm{o3}/\.cache/gstreamer-(\d+)$',                                     '[0-9]*',               '@{int}'),
-(rf'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/({hex2C})/',                         '[0-9a-f][0-9a-f]',     '@{h}@{h}'),
-(rf'^/var/lib/gdm{o3}/\.cache/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',       '[0-9a-f]*[0-9a-f]',    '@{hex}'),   # temp pair? TODO
-(rf'^/var/lib/gdm{o3}/\.config/ibus/bus/({hex32C})-',                                '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
-#(f'^/var/lib/gdm{o3}/\.config/ibus/bus/{hex32}-unix({oWayland})-{ints}$',           '{,-wayland}',           None),
-(rf'^/var/lib/gdm{o3}/\.config/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',              '[0-9]*',               '@{int}'),
-(rf'^/var/lib/gdm{o3}/\.local/share/xorg/Xorg\.(\d+)\.',                             '[0-9]*',               '@{int}'),
+(rf'^({gdm_cacheC})/',                                                                None,                  '@{gdm_cache_dirs}'),
+(rf'^({gdm_configC})/',                                                               None,                  '@{gdm_config_dirs}'),
+(rf'^({gdm_localC})/',                                                                None,                  '@{gdm_local_dirs}'),
+(rf'^({gdm_shareC})/',                                                                None,                  '@{gdm_share_dirs}'),
+(rf'^({sddm_cacheC})/',                                                               None,                  '@{sddm_cache_dirs}'),
+(rf'^({sddm_configC})/',                                                              None,                  '@{sddm_config_dirs}'),
+(rf'^({sddm_localC})/',                                                               None,                  '@{sddm_local_dirs}'),
+(rf'^({sddm_shareC})/',                                                               None,                  '@{sddm_share_dirs}'),
+(rf'^({lightdm_cacheC})/',                                                            None,                  '@{lightdm_cache_dirs}'),
+(rf'^({lightdm_configC})/',                                                           None,                  '@{lightdm_config_dirs}'),
+(rf'^({lightdm_localC})/',                                                            None,                  '@{lightdm_local_dirs}'),
+(rf'^({lightdm_shareC})/',                                                            None,                  '@{lightdm_share_dirs}'),
+(rf'^@?/var/lib/gdm({o3})/',                                                         '{,3}',                  None),  # after previous
+(rf'^@?{gdm_cache}/ibus/dbus-({random8})$',                                          '????????',             '@{rand8}'),
+(rf'^{gdm_cache}/gstreamer-(\d+)$',                                                  '[0-9]*',               '@{int}'),
+(rf'^{gdm_cache}/mesa_shader_cache/({hex2C})/',                                      '[0-9a-f][0-9a-f]',     '@{hex2}'),
+(rf'^{gdm_cache}/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',                    '[0-9a-f]*[0-9a-f]',    '@{hex38}'),  # temp pair? TODO
+(rf'^{gdm_config}/ibus/bus/({hex32C})-',                                             '[0-9a-f]*[0-9a-f]',    '@{hex32}'),
+#(f'^{gdm_config}/ibus/bus/{hex32}-unix({oWayland})-{ints}$',                         '{,-wayland}',           None),
+(rf'^{gdm_config}/ibus/bus/{hex32}-unix{oWayland}-(\d+)$',                           '[0-9]*',               '@{int}'),
+(rf'^{gdm_share}/xorg/Xorg\.(\d+)\.',                                                '[0-9]*',               '@{int}'),
 (rf'^/var/lib/kubelet/pods/({uuidC})/',                                              '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (rf'^/var/lib/libvirt/swtpm/({uuidC})/',                                             '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (rf'^{homes}/xauth_({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
 (rf'^({user_cacheC})/',                                                               None,                  '@{user_cache_dirs}',   'owner'),
 (rf'^({user_configC})/',                                                              None,                  '@{user_config_dirs}',  'owner'),
-(rf'^{user_cache}/calibre/ev2/[a-z]/[a-z]{2}-({random8})/',                          '????????', 	      None,                  'owner'), # unconventional '_' random tail
+(rf'^{user_cache}/calibre/ev2/[a-z]/[a-z][a-z]-({random8})/',                        '????????', 	      None,                  'owner'), # unconventional '_' random tail
 (rf'^{user_cache}/fontconfig/({hex32C})-',                                           '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
 (rf'^{user_cache}/fontconfig/{hex32}-le64\.cache-\d+\.TMP-({random6})$',             '??????',               '@{rand6}',             'owner'),
 (rf'^{user_cache}/fontconfig/({uuidC})-',                                            '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
 (rf'^{user_cache}/gnome-software/icons/({hex38C})-',                                 '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
 (rf'^{user_cache}/gstreamer-(\d+)/',                                                 '[0-9]*',               '@{int}',               'owner'),
 (rf'^{user_cache}/event-sound-cache\.tdb\.({hex32C})\.',                             '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
-(rf'^{user_cache}/mesa_shader_cache/({hex2C})/',                                     '[0-9a-f][0-9a-f]',     '@{h}@{h}',             'owner'),
-(rf'^{user_cache}/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',                   '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'), # temp pair? TODO
+(rf'^{user_cache}/kcrash-metadata/plasmashell\.({hex32C})\.',                        '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
+(rf'^{user_cache}/kcrash-metadata/plasmashell\.{hex32}\.({ints4C})\.',               '[0-9]*',               '@{int4}',              'owner'),
+(rf'^{user_cache}/mesa_shader_cache/({hex2C})/',                                     '[0-9a-f][0-9a-f]',     '@{hex2}',              'owner'),
+(rf'^{user_cache}/mesa_shader_cache/{hex2}/({hex38C})(?:\.tmp)?$',                   '[0-9a-f]*[0-9a-f]',    '@{hex38}',             'owner'), # temp pair? TODO
 (rf'^{user_cache}/thumbnails/[^/]+/({hex32C})\.',                                    '*',                    '@{hex32}',             'owner'),
 (rf'^{user_cache}/thumbnails/fail/gnome-thumbnail-factory/({hex32C})\.',             '*',                    '@{hex32}',             'owner'),
 (rf'^@?{user_cache}/ibus/dbus-({random8})$',                                         '????????',             '@{rand8}',             'owner'),
@@ -200,6 +246,7 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^/tmp/\.org\.chromium\.Chromium\.({random6})$',                                  '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/\.xfsm-ICE-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/\.t?X(\d+)-',                                                              '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/\.wine-(\d+)/',                                                            '[0-9]*',               '@{int}',               'owner'),
 (rf'^/tmp/adb\.(\d+)\.',		                                             '[0-9]*',               '@{int}',               'owner'),
 (rf'^/tmp/akregator\.({random6})\.', 	                                             '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/akregator\.{random6}\.({random6})$',                                       '??????',               '@{rand6}',             'owner'),
@@ -211,17 +258,23 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x({hex16C})\.',                          '[0-9a-f]*[0-9a-f]',    '@{hex}',               'owner'),
 (rf'^/tmp/apt-key-gpghome\.{random10}/\.#lk0x{hex16}\.debian-stable\.(\d+)x?$',      '[0-9]*[0-9]',          '@{int}',               'owner'),
 (rf'^/tmp/aurules\.({random8})$',                                                    '????????',             '@{rand8}',             'owner'),
-(rf'^/tmp/calibre_\d+\.\d+\.\d+_tmp_({random8})/',                                   '????????',             '@{rand8}',             'owner'),
+(rf'^/tmp/calibre_\d+\.(\d+)\.',                                                     '[0-9]{,[0-9]}',        '@{int}',               'owner'),
+(rf'^/tmp/calibre_\d+\.{ints}\.(\d+)_',                                              '[0-9]{,[0-9]}',        '@{int}',               'owner'),
+(rf'^/tmp/calibre_\d+\.{ints}\.{ints}_tmp_({random8uC})/',                           '????????',              None,                  'owner'), # unconventional '_' random tail
+(rf'^/tmp/calibre_\d+\.{ints}\.{ints}_tmp_{random8u}/({random8uC})(?:\.|/|log)',     '????????',              None,                  'owner'), # unconventional '_' random tail
+(rf'^/tmp/calibre_\d+\.{ints}\.{ints}_tmp_{random8u}/ipc_result_\d_\d_({random8uC})\.', '????????',           None,                  'owner'), # unconventional '_' random tail
 (rf'^/tmp/clr-debug-pipe-(\d+)-',                                                    '[0-9]*[0-9]',          '@{int}',               'owner'),
 (rf'^/tmp/clr-debug-pipe-{ints}-(\d+)-',                                             '[0-9]*[0-9]',          '@{int}',               'owner'),
 (rf'^/tmp/config-err-({random6})$',                                                  '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/dotnet-diagnostic-(\d+)-',                                                 '[0-9]*[0-9]',          '@{int}',               'owner'),
 (rf'^/tmp/dotnet-diagnostic-{ints}-(\d+)-',                                          '[0-9]*[0-9]',          '@{int}',               'owner'),
 (rf'^/tmp/dpkg\.({random6})/',                                                       '??????',               '@{rand6}',             'owner'),
-(rf'^/tmp/fz[0-9]temp-(\d+)/',                                                       '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/fz([0-9])temp',                                                            '[0-9]',                 None,                  'owner'),
+(rf'^/tmp/fz{ints}temp-(\d+)/',                                                      '[0-9]*',               '@{int}',               'owner'),
 (rf'^/tmp/gdkpixbuf-xpm-tmp\.({random6})$',                                          '??????',               '@{rand6}' ,            'owner'),
 (rf'^/tmp/kcminit\.({random6})$',                                                    '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/librnnoise-(\d+)\.',                                                       '[0-9]*',               '@{int}',               'owner'),
+(rf'^/tmp/mkinitcpio\.({random6})/',                                                 '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/mozilla-temp-(\d+)$',                                                      '[0-9]*',    	     '@{int}',               'owner'),
 (rf'^/tmp/Mozilla({uuidC})-',                                                        '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
 (rf'^/tmp/Mozilla{literalBackslash}{{({uuidC}){literalBackslash}}}-',                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
@@ -236,19 +289,28 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^/tmp/systemd-private-({hex32C})-',                                              '[0-9a-f]*[0-9a-f]',    '@{hex32}',             'owner'),
 (rf'^/tmp/systemd-private-{hex32}-[^/]+\.service-({random6})/',                      '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/sddm-:(\d+)-',           					             '[0-9]*',               '@{int}',               'owner'),
-(rf'^/tmp/sddm-:\d+-{random6}$',                      				     '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/sddm-:{ints}-{random6}$',                    				     '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/talpid-openvpn-({uuidC})$',                                                '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
 (rf'^/tmp/Temp-({uuidC})/',                                                          '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
 (rf'^/tmp/tmp\.({random10})/',                                                       '??????????',           '@{rand10}',            'owner'),
 (rf'^/tmp/tmp({random8})/',                                                          '????????',             '@{rand8}',             'owner'),
 (rf'^/tmp/user/{users}/tmp\.({random10})$',                                          '??????????',           '@{rand10}',            'owner'),
 (rf'^/tmp/({uuidC})$',                                                               '[0-9a-f]*[0-9a-f]',    '@{uuid}',              'owner'),
+(rf'^/tmp/vdpau-drivers-({random6})/',                                               '??????',               '@{rand6}',             'owner'),
 (rf'^/tmp/wireshark_extcap_ciscodump_(\d+)_',                                        '[0-9]*',               '@{int}',               'owner'),
 (rf'^/tmp/zabbix_server_({random6})$',                                               '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.({random6})$',                                                           '??????',               '@{rand6}',             'owner'),
+(rf'^/tmp/\.({random8})$',                                                           '????????',             '@{rand8}',             'owner'),
+(rf'^/tmp/\.({random10})$',                                                          '??????????',           '@{rand10}',            'owner'),
+(rf'^/tmp/({hex64C})\.png$',                                                          None,                  '@{hex64}',             'owner'),
 (rf'^{run}/cockpit/({random8})$',                                                    '????????',             '@{rand8}'),
 (rf'^{run}/gdm({o3})/',                                                              '{,3}',                  None),
+(rf'^{run}/gdm{o3}/dbus/dbus-({random8})$',                                          '????????',             '@{rand8}'),
 (rf'^{run}/netns/cni-({uuidC})$',                                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (rf'^{run}/NetworkManager/nm-openvpn-({uuidC})$',                                    '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
+(rf'^{run}/issue\.({random10})$',                                                    '??????????',           '@{rand10}'),
+(rf'^{run}/initcpio-tmp/mkinitcpio\.({random6})/',                                   '??????',               '@{rand6}',             'owner'),
+(rf'^{run}/sddm/{literalBackslash}{{({uuidC}){literalBackslash}}}-?$',               '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (rf'^{run}/systemd/seats/seat(\d+)$',                                                '[0-9]*',               '@{int}'),
 (rf'^{run}/systemd/netif/links/(\d+)$',                                              '[0-9]*',               '@{int}'),
 (rf'^{run}/systemd/(?:sessions|inhibit)/(.+)\.ref$',                                 '*',                     None),
@@ -289,6 +351,7 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^{sys}/firmware/efi/efivars/[^/]+-({uuidC})$',                                   '[0-9a-f]*[0-9a-f]',    '@{uuid}'),
 (rf'^{sys}/kernel/iommu_groups/(\d+)/',                                              '[0-9]*',               '@{int}'),
 (rf'^{proc}/{pids}/fdinfo/(\d+)$',                                                   '[0-9]*',               '@{int}',               'owner'),
+(rf'^{proc}/{pids}/net/(?:tcp|udp)(4|6)$',                                           '{4,6}',                 None),
 (rf'^{proc}/sys/net/ipv(4|6)/',                                                      '{4,6}',                 None),
 (rf'^{proc}/irq/(\d+)/',                                                             '[0-9]*',               '@{int}'),
 (rf'^/dev/cpu/(\d+)/',                                                               '[0-9]*',               '@{int}'),
@@ -352,7 +415,7 @@ def adaptFilePath(l, key, ruleStyle):
 (rf'^({procC})/',                                                                    '@{PROC}',               None),
 (rf'^{proc}/({pidsC})/',                                                             '@{pid}',                None,                  'owner'),
 (rf'^{proc}/{pids}/task/({tidsC})/',                                                 '@{tid}',                None,                  'owner'),
-(rf'^/tmp/tracker-extract-3-files.({usersC})/',                                      '@{uid}',                None,                  'owner'),
+(rf'^/tmp/tracker-extract-\d-files.({usersC})/',                                     '@{uid}',                None,                  'owner'),
 (rf'^/tmp/user/({usersC})/',                                                         '@{uid}',                None,                  'owner'),
 (rf'^/tmp/user/{users}/Temp-({uuidC})/',                                             '@{uuid}',               None,                  'owner'),
     ]
@@ -554,6 +617,7 @@ def highlightWords(string_, isHighlightVolatile=True):
         r'(?=[^0-9a-fA-F]([0-9a-fA-F]{128})(?:[^0-9a-fA-F]|$))',  # standalone SHA512
         r'(?=[^0-9a-fA-F]([0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})(?:[^0-9a-fA-F]|$))', # standalone UUID
         r'^@?/home/([^/]+)/', # previously unmatched homes
+        r'/python\d(?:\.\d+|\.\[0-9\]\{\,\[0-9\]\}|\.@\{int\})?/dist-packages/([^/]+)/',
     )
 
     if not string_.startswith(ignorePath):
@@ -2498,7 +2562,7 @@ def handleArgs():
     allSuffixKeys = ['comm', 'operation', 'mask', '*_diffs', 'error', 'info', 'class']
 
     parser = argparse.ArgumentParser(description='Suggest AppArmor rules')
-    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.10')
+    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.11')
     parser.add_argument('--legend', action='store_true',
                         default=False,
                         help='Display color legend')
@@ -2668,14 +2732,14 @@ $ sudo apt install python3-systemd  {Debian}
         errors[f"Empty journal! Was {taken_over} by 'auditd'?"] = 100
 
     isFirst = True
-    highestErrorCode = 0
+    highestExitCode = 0
     for e,c in errors.items():
         if isFirst:
             print('', file=sys.stderr)
             isFirst = False
-        if highestErrorCode < c:
-            highestErrorCode = c
+        if highestExitCode < c:
+            highestExitCode = c
         print(e, file=sys.stderr)
 
-    if highestErrorCode != 0:
-        sys.exit(highestErrorCode)
+    if highestExitCode != 0:
+        sys.exit(highestExitCode)
