@@ -2057,12 +2057,15 @@ def composeRule(l, args):
     elif findLineType(l) == 'UNIX':
         masks = ', '.join(sorted(l.pop('mask'), reverse=True))
         masks = '(%s)' % masks
-        addr = '"%s"' % l.pop('addr')
+        if l.get('addr'):
+            addr = ' addr="%s"' % l.pop('addr')
+        else:
+            addr = ''
         if 'peer' in l.keys():
-            rule = f'{l.pop("family")} {masks:24} type={l.pop("sock_type"):6} addr={addr:25} peer=(addr="{l.pop("peer_addr")}", label={l.pop("peer")}),'
+            rule = f'{l.pop("family")} {masks:24} type={l.pop("sock_type"):6}{addr:25} peer=(addr="{l.pop("peer_addr")}", label={l.pop("peer")}),'
 
         else:
-            rule = f'{l.pop("family")} {masks:24} type={l.pop("sock_type"):6} addr={addr},'
+            rule = f'{l.pop("family")} {masks:24} type={l.pop("sock_type"):6}{addr},'
 
     elif findLineType(l) == 'CAPABILITY':
         rule = f"capability {l.pop('capname')},"
