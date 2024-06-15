@@ -69,8 +69,8 @@ class simpleTests(unittest.TestCase):
         self.assertEqual(composeFileMask({'w', 'r', 'x'},      None, False), f'r{redg}x{rst}{redg}w{rst}') # colorized dangerous combinations
         self.assertEqual(composeFileMask({'r', 'c', 'm'},      None, False), f'{redg}m{rst}r{redg}c{rst}')
         self.assertEqual(composeFileMask({'c', 'r', 'x'},      None, True),  f'r{redg}x{rst}{redg}w{rst}') # adapted dangerous combination, W^X took precedence
-        self.assertEqual(composeFileMask({'r', 'x', 'N'},      None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'N'
-        self.assertEqual(composeFileMask({'r', 'x', 'N', 'P'}, None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'N'; suggestion consumed
+        self.assertEqual(composeFileMask({'r', 'x', 'T'},      None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'T'
+        self.assertEqual(composeFileMask({'r', 'x', 'T', 'P'}, None, False), f'r{gryg}P{rst}x')  # target not found hinting with 'T'; suggestion consumed
         self.assertNotEqual(composeFileMask({'w', 'r', 'x'},   None, False), f'rxw')  # not highlighted
         self.assertNotEqual(composeFileMask({'w', 'r', 'x'},   None, True),  f'rxw')
         self.assertNotEqual(composeFileMask({'r', 'c', 'm'},   None, False), f'mrc')
@@ -84,6 +84,8 @@ class simpleTests(unittest.TestCase):
         self.assertEqual(composeFileMask({'w', 'c'},           None, False), f'wc')             # not adapted
         self.assertEqual(composeFileMask({'w', 'c'},           None, True),  f'{grn}w{rst}')    #     adapted
         self.assertEqual(composeFileMask({'r', 'x'},           None, False), f'rx')
+        self.assertEqual(composeFileMask({'r', ':', 'x'},      None, True),  f'rx')
+        self.assertEqual(composeFileMask({'r', ':', 'x'},      None, False), f'rx')
         self.assertEqual(composeFileMask({'k', 'm', 'r', 'x', 'w', 'a', 'd', 'c', 'l'}, None, False), f'{redg}m{rst}r{redg}x{rst}{redg}w{rst}{redg}d{rst}{redg}c{rst}{redg}l{rst}{redg}k{rst}')  # all possible
         self.assertEqual(composeFileMask({'k', 'm', 'r', 'x', 'w', 'a', 'd', 'c', 'l'}, None, True),  f'{redg}m{rst}r{redg}x{rst}{redg}w{rst}{redg}l{rst}{redg}k{rst}')  # all possible, adaption consumed by W^X
         # Automatic transitions
@@ -553,7 +555,9 @@ class regexTests(unittest.TestCase):
 (   {'path': '/tmp/Mozilla{c843286e-fb29-4915-aa17-db3a6df86497}-',            'operation': {'open'}},
     {'path': r'/tmp/Mozilla\{[0-9a-f]*[0-9a-f]\}-',      'operation': {'open'}, 'path_diffs': [[(12, 13), ''], [(14, 31), 'c843286e-fb29-4915-aa17-db3a6df86497'], [(31, 32), '']], 'path_prefix': 'owner'}),
 (   {'path': r'/][*{}?^[[]]{}*? ?\*/mHwu2E.tmp',           'operation': {'open'}},
-    {'path': r'/\]\[\*\{\}\?\^\[\[\]\]\{\}\*\? \?\*/??????.tmp', 'operation': {'open'}, 'path_diffs': [[(1, 2), ''], [(3, 4), ''], [(5, 6), ''], [(7, 8), ''], [(9, 10), ''], [(11, 12), ''], [(13, 14), ''], [(15, 16), ''], [(17, 18), ''], [(19, 20), ''], [(21, 22), ''], [(23, 24), ''], [(25, 26), ''], [(27, 28), ''], [(29, 30), ''], [(32, 33), ''], [(37, 43), 'mHwu2E']], 'path_prefix': 'owner'}),
+    {'path': r'/\]\[\*\{\}\?\^\[\[\]\]\{\}\*\? \?\\*/??????.tmp', 'operation': {'open'}, 'path_diffs': [[(1, 2), ''], [(3, 4), ''], [(5, 6), ''], [(7, 8), ''], [(9, 10), ''], [(11, 12), ''], [(13, 14), ''], [(15, 16), ''], [(17, 18), ''], [(19, 20), ''], [(21, 22), ''], [(23, 24), ''], [(25, 26), ''], [(27, 28), ''], [(29, 30), ''], [(32, 33), ''], [(34, 35), ''], [(38, 44), 'mHwu2E']], 'path_prefix': 'owner'}),
+(   {'path': r'/\\\\\a.txt',                            'operation': {'open'}},
+    {'path': r'/\\\\\\\\\\a.txt',                       'operation': {'open'}, 'path_diffs': [[(1, 2), ''], [(2, 3), ''], [(3, 4), ''], [(4, 5), ''], [(5, 6), '']]}),
 (   {'path': '/var/lib/gdm3/.cache/mesa_shader_cache/5b/630568b4dc7a281bca68647783eb1b338fd9ce.tmp', 'operation': {'open'}},
     {'path': '/var/lib/gdm{,3}/.cache/mesa_shader_cache/[0-9a-f][0-9a-f]/[0-9a-f]*[0-9a-f].tmp', 'operation': {'open'}, 'path_diffs': [[(12, 16), '3'], [(42, 58), '5b'], [(59, 76), '630568b4dc7a281bca68647783eb1b338fd9ce']]}),
 (   {'path': '/usr/lib/kde/',                           'operation': {'open'}},

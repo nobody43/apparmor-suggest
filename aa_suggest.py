@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 # SPDX-License-Identifier: GPL-3.0-only
-# Version: 0.8.11
+# Version: 0.8.12
 
 # line, l - single log line in form of dictionary
 # normalize - prepare line values for a possible merge; make keys consistent
@@ -93,7 +93,6 @@ def adaptFilePath(l, key, ruleStyle):
     oUsr         = r'(?:usr/|{\,usr/})?'          # optional '/usr'
     oUsrC        = r'(?:usr/)?'                   # optional '/usr'; capture
     Any          = r'(?!@{.+|{.+|\[0-9.+|\*)[^/]+'
-    literalBackslash = '\\\\'
     gdm_cache       = r'(?:/var/lib/gdm(?:3|{\,3})?/\.cache|@{gdm_cache_dirs})'
     gdm_cacheC      = r'(?:/var/lib/gdm(?:3|{\,3})?/\.cache)'
     gdm_config      = r'(?:/var/lib/gdm(?:3|{\,3})?/\.config|@{gdm_config_dirs})'
@@ -118,6 +117,7 @@ def adaptFilePath(l, key, ruleStyle):
     lightdm_localC  = r'(?:/var/lib/lightdm/\.local(?!/share))'
     lightdm_share   = r'(?:/var/lib/lightdm/\.local/share|@{lightdm_share_dirs})'
     lightdm_shareC  = r'(?:/var/lib/lightdm/\.local/share)'
+    literalBackslash = '\\\\'
 
     # Special cases <3
     pciBus = r'(?:(?:pci)?[0-9a-f]{4}:[0-9a-f]{2}|(?:pci)?\?\?\?\?:\?\?|@{pci_bus})'
@@ -431,7 +431,7 @@ def adaptFilePath(l, key, ruleStyle):
         l[key] = path
 
     # Backslash special characters after decoding and before PCRE replacement
-    pcreChars = (']', '[', '*', '}', '{', '?', '^', '"', "'")  # literal backslashes aren't handled
+    pcreChars = ('\\', '?', '*', '[', ']', '{', '}', '"', '!', "'", '^')
     for i in pcreChars:
         occurences = range(l.get(key).count(i))
         for j in occurences:
@@ -1058,13 +1058,16 @@ def composeSuffix(l, keysToHide):
     [l.pop(k) for k in toDropStalePrefixesKeys if l.get(k)]  # drop prefixes which unrelevant anymore
 
     keys = sorted(l.keys())
-    if 'addr_diffs' in keys:
+    if 'addr_diffs' in keys:  # move to the end
         keys.remove('addr_diffs')
         keys.append('addr_diffs')
     l = {i: l[i] for i in keys}
 
     s = ''
     for k,v in l.items():
+        if v == '':  # skip empty
+            continue
+
         if isinstance(v, set):
             if 'file_inherit' in v:
                 v.remove('file_inherit')
@@ -1237,7 +1240,7 @@ def updatePostcolorizationDiffs(l, currentSpan, currentDiff, key):
     return l
 
 def findLineType(l):
-    '''Handles regular and custom operations (sets), but only for file, DBus and network rules'''
+    '''Handles regular and custom operations (sets).'''
     fileOperations = {
         'exec',        'open',
         'getattr',     'mknod',
@@ -1268,9 +1271,10 @@ def findLineType(l):
             break
 
     if not operation:
-        result = 'NONE'
+        result = 'NO_OPERATION'
 
-    elif   operation in fileOperations and \
+    elif   operation in fileOperations     and \
+          (l.get('name') or l.get('path')) and \
        not l.get('sock_type'):
 
         result = 'FILE'
@@ -1312,11 +1316,14 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
     maskPrecedence = 'mriPUCpuxwadclk'
     toColorize = {}
 
+    if ':' in maskSet:
+        maskSet.remove(':')
+
     if 'P' in maskSet:
         toColorize['P'] = ('White', '1')  # bold
 
-    if 'N' in maskSet:
-        maskSet.remove('N')
+    if 'T' in maskSet:
+        maskSet.remove('T')
         maskSet.add('P')
         toColorize['P'] = ('Bright Black', '7')  # background
 
@@ -1439,15 +1446,15 @@ def makeHashable(l):
     if l.get('timestamp'):
         raise ValueError('Hashing a line with a timestamp will always result in unique hash')
 
-    L = dict(l)
-    for k,v in L.items():
+    newL = dict(l)
+    for k,v in newL.items():
         if   isinstance(v, set):
-            L[k] = sorted(v)
+            newL[k] = sorted(v)
 
         elif isinstance(v, dict):
-            L[k] = sorted(v.items())
+            newL[k] = sorted(v.items())
 
-    result = str(sorted(L.items()))
+    result = str(sorted(newL.items()))
 
     return result
 
@@ -1866,7 +1873,8 @@ def normalizeAndGroup(lines, args):
             elif l.get('comm'):
                 l['comm'] = {hexToString(l.pop('comm'))}
 
-            l['operation'] = {l.pop('operation')}
+            if l.get('operation'):
+                l['operation'] = {l.pop('operation')}
 
             # Stacks or sinkholes based on params
             if findLineType(l) == 'FILE':
@@ -1890,7 +1898,8 @@ def normalizeAndGroup(lines, args):
 
             elif findLineType(l) == 'NETWORK':
                 if 'network' in args.type:
-                    l.pop('protocol')
+                    if l.get('protocol'):
+                        l.pop('protocol')
                     l['mask'] = set(l.pop('requested_mask').split())
                     networkL.append(l)
 
@@ -1989,44 +1998,46 @@ def mergeNestedDictionaries(dictOne, dictTwo):
 
 def composeRule(l, args):
     '''Compose final rule and insert it into dictionary line.'''
-    if findLineType(l) == 'FILE':
-        if l.get('flags'):
-            flagsStr = ', '.join(sorted(l.pop('flags')))
-            rule = f'flags=({flagsStr})'
+    if l.get('profile_flags'):
+        flagsStr = ', '.join(sorted(l.pop('profile_flags')))
+        rule = f'flags=({flagsStr})'
+        if findLineType(l) == 'FILE' and l.get('mask'):
+            mask = composeFileMask(l.pop('mask'), None, args.convert_file_masks)
+            l['mask'] = mask
 
+    elif findLineType(l) == 'FILE':
+        transitionMask = None
+        if   l.get('transition_mask'):
+            transitionMask = l.pop('transition_mask')
+        elif l.get('comm'):  # guard
+            if isTransitionComm(l.get('comm')) and len(l.get('comm')) == 1:
+                transitionMask = l.get('mask')
+
+        execType = findExecType(getBaseBin(l.get('path')))
+        if execType:
+            splitProfile = l.get('profile')
+            splitPath    = l.get('path')
+            if   execType == 'i':
+                l['mask'].add(execType)
+            elif splitProfile[-1] != splitPath[-1] and \
+                 execType == 'P':  # affect only transition, not calling itself
+                l['mask'].add(execType)
+
+        if ' ' in l.get('path'):
+            path = f'"{l.pop("path")}"'
         else:
-            transitionMask = None
-            if   l.get('transition_mask'):
-                transitionMask = l.pop('transition_mask')
-            elif l.get('comm'):  # guard
-                if isTransitionComm(l.get('comm')) and len(l.get('comm')) == 1:
-                    transitionMask = l.get('mask')
- 
-            execType = findExecType(getBaseBin(l.get('path')))
-            if execType:
-                splitProfile = l.get('profile')
-                splitPath    = l.get('path')
-                if   execType == 'i':
-                    l['mask'].add(execType)
-                elif splitProfile[-1] != splitPath[-1] and \
-                     execType == 'P':  # affect only transition, not calling itself
-                    l['mask'].add(execType)
+            path = l.pop('path')
 
-            if ' ' in l.get('path'):
-                path = f'"{l.pop("path")}"'
-            else:
-                path = l.pop('path')
- 
-            if l.get('path_prefix'):
-                prefix = f"{l.pop('path_prefix')} "
-            else:
-                prefix = ''
- 
-            mask = composeFileMask(l.pop('mask'), transitionMask, args.convert_file_masks)
-            if l.get('target'):
-                rule = f"{prefix}{path} {mask} -> {l.pop('target')},"
-            else:
-                rule = f'{prefix}{path} {mask},'
+        if l.get('path_prefix'):
+            prefix = f"{l.pop('path_prefix')} "
+        else:
+            prefix = ''
+
+        mask = composeFileMask(l.pop('mask'), transitionMask, args.convert_file_masks)
+        if l.get('target'):
+            rule = f"{prefix}{path} {mask} -> {l.pop('target')},"
+        else:
+            rule = f'{prefix}{path} {mask},'
 
     elif findLineType(l).startswith('DBUS'):
         mask = f"({l.pop('mask')})"
@@ -2221,15 +2232,15 @@ def colorizeLines(plainLines):
             if {profile} == l.get('comm'):
                 l.pop('comm')  # ommit comm for itself; but only when single
 
-        flags = set()
+        profileFlags = set()
         if l.get('info') == 'Failed name lookup - disconnected path':
-            flags.add(colorize('attach_disconnected', 'Bright Yellow'))
+            profileFlags.add(colorize('attach_disconnected', 'Bright Yellow'))
         if l.get('info') == 'Failed name lookup - deleted entry':
-            flags.add('mediate_deleted')
+            profileFlags.add('mediate_deleted')
         if l.get('info') == 'profile transition not found':
-            l['mask'].add('N')
-        if flags:
-            l['flags'] = flags
+            l['mask'].add('T')
+        if profileFlags:
+            l['profile_flags'] = profileFlags
 
         if findLineType(l).startswith('DBUS'):
             if re.match(r':\d+\.(?:\[0-9\]\*|@\{int\})$', l.get('name')):
@@ -2310,10 +2321,10 @@ def isSupportedDistro():
 
     return isSupported
 
-def failIfNotConfined():
+def failIfNotConfined(profileBasename):
     '''Only covers confinement, not necessary enforcement'''
     randomTail = ''.join(random.choice(string.ascii_letters) for i in range(8))
-    path = f'/dev/shm/aa_suggest.am_i_confined.{randomTail}'
+    path = f'/dev/shm/{profileBasename}.am_i_confined.{randomTail}'
 
     try:
         with open(path, 'w') as f:
@@ -2321,12 +2332,12 @@ def failIfNotConfined():
     except Exception:  # expected behavior
         pass
 
-    file = pathlib.Path(path)
-    if file.is_file():
-        file.unlink()
-        raise EnvironmentError('''The process is not confined by AppArmor. Refusing to function. Expected action:\n
-$ sudo install -m 644 -o root -g root apparmor-suggest/apparmor.d/aa_suggest /etc/apparmor.d/
-$ sudo apparmor_parser --add /etc/apparmor.d/aa_suggest''')
+    f = pathlib.Path(path)
+    if f.is_file():
+        f.unlink()
+        raise EnvironmentError(f'''The process is not confined by AppArmor. Refusing to function. Expected action:\n
+$ sudo install -m 600 -o root -g root apparmor.d/{profileBasename} /etc/apparmor.d/
+$ sudo apparmor_parser --add /etc/apparmor.d/{profileBasename}''')
 
     return None
 
@@ -2565,7 +2576,7 @@ def handleArgs():
     allSuffixKeys = ['comm', 'operation', 'mask', '*_diffs', 'error', 'info', 'class']
 
     parser = argparse.ArgumentParser(description='Suggest AppArmor rules')
-    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.11')
+    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.12')
     parser.add_argument('--legend', action='store_true',
                         default=False,
                         help='Display color legend')
@@ -2627,7 +2638,8 @@ def handleArgs():
 
 if __name__ == '__main__':
 
-    failIfNotConfined()
+    profileBasename = pathlib.Path(sys.argv[0]).stem
+    failIfNotConfined(profileBasename)
 
     try:
         from systemd import journal
