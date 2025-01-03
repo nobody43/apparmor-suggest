@@ -2,7 +2,7 @@
 ## Features
 Deduplicates AppArmor log entries and suggests unequivocal rules for profiles. Provides tuning and filtering parameters to better evaluate required access.
 
-pre-BETA state - suitable for usage and testing (comparing raw log and suggested rules).
+BETA state - suitable for usage and testing (comparing raw log and suggested rules).
 
 ### `--help`
 ```
