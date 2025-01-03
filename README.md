@@ -38,7 +38,7 @@ options:
   -s {profile,peer,path,interface,member,timestamp}, --sort {profile,peer,path,interface,member,timestamp}
                         Sort by. 'profile' is the default
   --style {default,AppArmor.d}
-                        Style preset. Stock or 'roddhjav/AppArmor.d'. Affects custom tunables
+                        Style preset. Stock or 'roddhjav/apparmor.d'. Affects custom tunables
 ```
 
 ## Requirements
@@ -52,8 +52,8 @@ $ sudo apt install python3-systemd                                           # i
 $ git clone https://github.com/nobody43/apparmor-suggest.git
 $ cd apparmor-suggest
 $ sudo install -m 644 -o root -g root apparmor.d/aa_suggest /etc/apparmor.d/ # install AppArmor profile for executable
-$ sudo install -m 755 -o root -g root aa_suggest.py /usr/local/bin/          # install the tool
 $ sudo apparmor_parser --add /etc/apparmor.d/aa_suggest                      # confine profile for executable
+$ sudo install -m 755 -o root -g root aa_suggest.py /usr/local/bin/          # install the executable
 ```
 
 ## Usage advice
@@ -65,11 +65,11 @@ $ sudo apparmor_parser --add /etc/apparmor.d/aa_suggest                      # c
 
 ## Planned features
 ### for BETA
-- better padding
 - compatibility with more distros
 - switching from journal to `audit` entirely
 
 ### for 1.0
+- better padding
 - boot ID selection
 - `--no-color`
 
@@ -92,9 +92,9 @@ Restart the system to take effect.
 
 ## Deinstallation
 ```sh
+$ sudo rm /usr/local/bin/aa_suggest.py
 $ sudo apparmor_parser --remove /etc/apparmor.d/aa_suggest
 $ sudo rm /etc/apparmor.d/aa_suggest
-$ sudo rm /usr/local/bin/aa_suggest.py
 $ sudo rm /dev/shm/apparmor_suggest/timestamp.latest
 $ sudo rm -d /dev/shm/apparmor_suggest/
 ```
