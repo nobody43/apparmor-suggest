@@ -361,6 +361,7 @@ class colorizationTests(unittest.TestCase):
 #('rooturkey', f'{red}root{rst}ur{red}key{rst}'),  # masking injection attempt; TODO
 ('/turkey/site.key', f'/turkey/site.{red}key{rst}'),  # one assertion and one substitution
 # Volatile
+('/.mozilla/firefox/wjdycmdr.default', f'/.mozilla/firefox/{ylw}wjdycmdr{rst}.default'),
 ('/#123', f'/#{ylw}123{rst}'),
 ('/usr/share/#123', f'/usr/share/#123'),
 ('/#123abc', f'/#123abc'),
@@ -582,6 +583,8 @@ class regexTests(unittest.TestCase):
     {'path': '/etc/polkit-1/rules.d/[0-9][0-9]-local',  'operation': {'open'}, 'path_diffs': [[(22, 32), '01']]}),
 (   {'path': '/etc/dir/subdir/conf.d/00-local',         'operation': {'open'}},
     {'path': '/etc/dir/subdir/conf.d/[0-9][0-9]-local', 'operation': {'open'}, 'path_diffs': [[(23, 33), '00']]}),
+(   {'path': '/etc/fonts/conf.avail/10-local',           'operation': {'open'}},
+    {'path': '/etc/fonts/conf.avail/[0-9][0-9]-local',   'operation': {'open'}, 'path_diffs': [[(22, 32), '10']]}),
 (   {'path': '/home/user/.cache/kcrash-metadata/plasmashell.d5856b1aeb3505a99ebc25cc92607f81.1234.ini', 'operation': {'open'}},
     {'path': '@{HOME}/.cache/kcrash-metadata/plasmashell.[0-9a-f]*[0-9a-f].[0-9]*.ini', 'operation': {'open'}, 'path_diffs': [[(0, 7), '/home/user'], [(43, 60), 'd5856b1aeb3505a99ebc25cc92607f81'], [(61, 67), '1234']], 'path_prefix': 'owner'}),
 (   {'path': '/var/lib/gdm3/.cache/ibus/dbus-KeTdY3dU',    'operation': {'open'}},
