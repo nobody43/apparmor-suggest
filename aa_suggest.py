@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 # SPDX-License-Identifier: GPL-3.0-only
-# Version: 0.8.13
+# Version: 0.8.14
+# Min AppArmor version: 3.0.8 (Debian 12)
 # Max AppArmor version: 4.0.1 (Ubuntu 24.04 LTS), stop using if not updated - it will provide ambiguous results
 
 # line, l - single log line in form of dictionary
@@ -620,6 +621,11 @@ def highlightWords(string_, isHighlightVolatile=True):
 
     ignorePath = '/usr/share'
 
+    grn  = r'\x1b\[0;32m' # (escaped) regular green
+    rst  = r'\x1b\[0m'    # (escaped) reset
+    proc = '@{PROC}'
+    pids = '@{pids?}'
+
     sensitivePatterns = (  # with Red; re.I
         r'/\.ssh/(id[^.]+)(?!.*\.pub)(?:/|$)',
         r'/(ssh_host_[^/]+_key(?:[^.]|))(?!.*\.pub)',
@@ -631,8 +637,8 @@ def highlightWords(string_, isHighlightVolatile=True):
         r'(?<!over|fore)(?<!be)(shadow)(?!coord|graph|iest|like|less|map|ing|ily|ers|box|ier|er|ed|y|s)', # only shadow; NOT: foreshadow, shadows, etc
         r'(?<!na|sa|ac)(cred)(?!ulous|ulity|uliti|enza|ence|ibl|ibi|al|it|o)', # only cred, creds, credentials; NOT: sacred, credence, etc
         r'(?:/|^)(0)(?:/|$)', # standalone zero: 0, /0, /0/; NOT: a0, 0a, 01, 10, 101, etc
-        r'^(?:/proc|@{PROC})/(1)/',
-        r'^(?:/proc|@{PROC})(?:/\d+|/@{pids?})?/(cmdline)$',
+       rf'^(?:/proc|{proc}|{grn}{proc}{rst})/(1)/',
+       rf'^(?:/proc|{proc}|{grn}{proc}{rst})(?:/\d+|/(?:{grn}{pids}{rst}|{pids}))?/(cmdline)$',
         r'(cookies)\.sqlite(?:-wal)?$',
         r'(cookiejar)',
         )
@@ -660,7 +666,7 @@ def highlightWords(string_, isHighlightVolatile=True):
         r'(?=[^0-9a-fA-F]([0-9a-fA-F]{8}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{4}[-_][0-9a-fA-F]{12})(?:[^0-9a-fA-F]|$))', # standalone UUID
         r'^@?/home/([^/]+)/', # previously unmatched homes
         r'/python\d(?:\.\d+|\.\[0-9\]\{\,\[0-9\]\}|\.@\{int\})?/dist-packages/([^/]+)/',
-	r'/\.mozilla/firefox/(\w{8})\.default',
+        r'/\.mozilla/firefox/(\w{8})\.default',
     )
 
     if not string_.startswith(ignorePath):
@@ -995,9 +1001,12 @@ def findLogLines(rawLines, args):
 
 def normalizeJournalLine(rawLine, args):
 
-    toSkipKeys = {'audit:', 'AVC', 'capability', 'denied_mask', 'ouid', 'sauid', 'fsuid', 'pid', 'peer_pid', 'type', 'class'}
+    toSkipKeys = {'audit:', 'AVC', 'capability', 'denied_mask', 'denied', 'ouid', 'sauid', 'fsuid', 'pid', 'peer_pid', 'type', 'class'}
     if not args.keep_status:
         toSkipKeys.add('apparmor')
+    if not args.keep_ports:
+        toSkipKeys.add('lport')
+        toSkipKeys.add('fport')
 
     lineList = shlex.split(rawLine)
 
@@ -1323,7 +1332,8 @@ def findLineType(l):
 
     elif   operation in fileOperations     and \
           (l.get('name') or l.get('path')) and \
-       not l.get('sock_type'):
+       not l.get('sock_type')              and \
+       not l.get('requested') in fileOperations:
 
         result = 'FILE'
 
@@ -1929,7 +1939,13 @@ def normalizeAndGroup(lines, args):
             if findLineType(l) == 'FILE':
                 if 'file' in args.type:
                     l['path'] = l.pop('name')
-                    l['mask'] = set(list(l.pop('requested_mask')))
+
+                    if   l.get('requested_mask'):
+                        l['mask'] = set(list(l.pop('requested_mask')))
+                    elif l.get('requested'):
+                        l['mask'] = set(list(l.pop('requested')))
+                    else:
+                        raise NotImplementedError('Not adapted to new key format')
 
                     if not args.keep_base_abs_transitions:
                         if isBaseAbstractionTransition(l, profile):
@@ -1949,7 +1965,18 @@ def normalizeAndGroup(lines, args):
                 if 'network' in args.type:
                     if l.get('protocol'):
                         l.pop('protocol')
-                    l['mask'] = set(l.pop('requested_mask').split())
+
+                    if l.get('lport'):
+                        l['lport'] = {l.pop(('lport'))}
+                    if l.get('fport'):
+                        l['fport'] = {l.pop(('fport'))}
+
+                    if   l.get('requested_mask'):
+                        l['mask'] = set(l.pop('requested_mask').split())
+                    elif l.get('requested'):
+                        l['mask'] = set(l.pop('requested').split())
+                    else:
+                        raise NotImplementedError('Not adapted to new key format')
                     networkL.append(l)
 
             elif findLineType(l) == 'UNIX':
@@ -1957,7 +1984,12 @@ def normalizeAndGroup(lines, args):
                     if l.get('protocol') == '0':
                         l.pop('protocol')
  
-                    l['mask'] = set(l.pop('requested_mask').split())
+                    if   l.get('requested_mask'):
+                        l['mask'] = set(l.pop('requested_mask').split())
+                    elif l.get('requested'):
+                        l['mask'] = set(l.pop('requested').split())
+                    else:
+                        raise NotImplementedError('Not adapted to new key format')
                     [adaptFilePath(l, k, args.style) for k in toAdaptPathKeys if l.get(k)]
                     unixL.append(l)
 
@@ -2629,7 +2661,7 @@ def handleArgs():
     allSuffixKeys = ['comm', 'operation', 'mask', '*_diffs', 'error', 'info', 'class']
 
     parser = argparse.ArgumentParser(description='Suggest AppArmor rules')
-    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.13')
+    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.14')
     parser.add_argument('--legend', action='store_true',
                         default=False,
                         help='Display color legend')
@@ -2653,7 +2685,7 @@ def handleArgs():
                         help='Hide specified keys in suffix. Does not affect merging')
     parser.add_argument('--drop-comm', action='store_true',
                         default=False,
-                        help='Drop comm key to affect further merging')
+                        help='Drop comm key for more aggressive merging')
     parser.add_argument('--keep-base-abs-transitions', action='store_true',
                         default=False,
                         help="Do not drop automatic transition lines '▶' which rules are present in 'base' abstraction")
@@ -2661,13 +2693,15 @@ def handleArgs():
                         help="Do not drop 'apparmor' status key. Affects merging")
     parser.add_argument('--keep-status-audit', action='store_true',
                         help="Do not drop 'AUDIT' log lines. Implies '--keep-status'")
+    parser.add_argument('--keep-ports', action='store_true',
+                        help="Do not drop network 'lport' and 'fport' keys")
     parser.add_argument('-c', '--convert-file-masks', action='store_true',
                         help='Convert requested file masks to currently supported variants. Will be deprecated (changed)')
     parser.add_argument('-s', '--sort', action='store',
                         choices=['profile', 'peer', 'path', 'interface', 'member', 'timestamp'],
                         default='profile',
                         help="Sort by. 'profile' is the default")
-    parser.add_argument('--style', action='store',
+    parser.add_argument('-S', '--style', action='store',
                         choices=['default', 'AppArmor.d'],
                         default='default',
                         help="Style preset. Stock or 'roddhjav/apparmor.d'. Affects custom tunables")
@@ -2730,16 +2764,9 @@ $ sudo apt install python3-systemd  {Debian}
     allLines = groupLinesByProfile(unsortedLines)
 
     groupedLines_Out = normalizeAndGroup(allLines, args)
-    fileLines    = groupedLines_Out[0]
-    dbusLines    = groupedLines_Out[1]
-    networkLines = groupedLines_Out[2]
-    unixLines    = groupedLines_Out[3]
-    capLines     = groupedLines_Out[4]
-    signalLines  = groupedLines_Out[5]
-    ptraceLines  = groupedLines_Out[6]
-    mountLines   = groupedLines_Out[7]
-    pivotLines   = groupedLines_Out[8]
-    unknownLines = groupedLines_Out[9]
+    (fileLines, dbusLines, networkLines, \
+     unixLines, capLines, signalLines, \
+     ptraceLines, mountLines, pivotLines, unknownLines) = groupedLines_Out
 
     if 'file'    in args.type:
         fileLines = adaptTempPaths(fileLines, args.style)
@@ -2755,6 +2782,8 @@ $ sudo apt install python3-systemd  {Debian}
 
     if 'network' in args.type:
         networkLines = mergeDictsByKeyPair(networkLines, 'mask', 'operation')
+        networkLines = mergeDictsBySingleKey(networkLines, 'lport')
+        networkLines = mergeDictsBySingleKey(networkLines, 'fport')
 
     if 'unix'    in args.type:
         unixLines    = mergeDictsByKeyPair(unixLines, 'mask', 'operation')

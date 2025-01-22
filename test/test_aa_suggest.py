@@ -278,23 +278,28 @@ class colorizationTests(unittest.TestCase):
             self.assertEqual(updatePostcolorizationDiffs(i[0], i[1], i[2], i[3]), r)
 
     def test_highlightWords(self):
-        '''"/" means regular directory, not necessary root directory'''
+        '''Leading "/" means regular directory, not necessarily root directory'''
         red = '\x1b[0;31m'
+        grn = '\x1b[0;32m'
         ylw = '\x1b[0;33m'
         rst = '\x1b[0m'
         num_ = '[0-9]{,[0-9]}'
         int_ = '@{int}'
         pathsAndResults = (
 # Sensitive
-('/proc/0/', f'/proc/{red}0{rst}/'),
-('/proc/1/', f'/proc/{red}1{rst}/'),
+(f'{grn}@{{PROC}}{rst}/1/', f'{grn}@{{PROC}}{rst}/{red}1{rst}/'),
+(f'{grn}@{{PROC}}{rst}/2/', f'{grn}@{{PROC}}{rst}/2/'),
+(f'{grn}@{{PROC}}{rst}/{grn}@{{pid}}{rst}/cmdline', f'{grn}@{{PROC}}{rst}/{grn}@{{pid}}{rst}/{red}cmdline{rst}'),
+(f'{grn}@{{PROC}}{rst}/cmdline', f'{grn}@{{PROC}}{rst}/{red}cmdline{rst}'),
 ('@{PROC}/1/', f'@{{PROC}}/{red}1{rst}/'),
 ('@{PROC}/2/', f'@{{PROC}}/2/'),
+('@{PROC}/@{pid}/cmdline', f'@{{PROC}}/@{{pid}}/{red}cmdline{rst}'),
+('@{PROC}/cmdline', f'@{{PROC}}/{red}cmdline{rst}'),
+('/proc/0/', f'/proc/{red}0{rst}/'),
+('/proc/1/', f'/proc/{red}1{rst}/'),
 ('/proc/1/cmdline', f'/proc/{red}1{rst}/cmdline'),
 ('/proc/1234/cmdline', f'/proc/1234/{red}cmdline{rst}'),
 ('/proc/cmdline', f'/proc/{red}cmdline{rst}'),
-('@{PROC}/@{pid}/cmdline', f'@{{PROC}}/@{{pid}}/{red}cmdline{rst}'),
-('@{PROC}/cmdline', f'@{{PROC}}/{red}cmdline{rst}'),
 ('/dir/proc/1/', '/dir/proc/1/'),
 ('/.ssh/id_rsa',         f'/.ssh/{red}id_rsa{rst}'),
 ('/.ssh/id_rsa.pub',     f'/.ssh/id_rsa.pub'),
