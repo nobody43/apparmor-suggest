@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 # SPDX-License-Identifier: GPL-3.0-only
-# Version: 0.8.14
+# Version: 0.8.15
 # Min AppArmor version: 3.0.8 (Debian 12)
 # Max AppArmor version: 4.0.1 (Ubuntu 24.04 LTS), stop using if not updated - it will provide ambiguous results
 
@@ -629,10 +629,10 @@ def highlightWords(string_, isHighlightVolatile=True):
     sensitivePatterns = (  # with Red; re.I
         r'/\.ssh/(id[^.]+)(?!.*\.pub)(?:/|$)',
         r'/(ssh_host_[^/]+_key(?:[^.]|))(?!.*\.pub)',
-        r'(?<!pubring\.orig\.)(?<!pubring\.)(?<!mouse)(?<!turn|whis|flun|dove|alar|rick|apt-|gtk-)(?<!hot|hoc|don|mon|tur|coc|joc|lac|buc|soc|haw|pun|tac|flu|dar|sna|smo|cri|coo|pin|din|dic)(?<!ca|mi)(key)(?!button|stroke|board|punch|less|code|pal|pad|gen|\.pub|word\.cpython|-manager-qt_ykman\.png|-personalization-gui\.png|-personalization-gui_yubikey-personalization-gui\.png)', # only key; NOT: turkey, keyboard, keygen, etc
+        r'(?<!pubring\.orig\.)(?<!pubring\.)(?<!mouse)(?<!turn|whis|flun|dove|alar|rick|apt-|gtk-)(?<!hot|hoc|don|mon|tur|coc|joc|lac|buc|soc|haw|pun|tac|flu|dar|sna|smo|cri|coo|pin|din|dic)(?<!ca|mi)(key)(?!binding|button|stroke|board|punch|less|code|pal|pad|gen|\.pub|word\.cpython|-manager-qt_ykman\.png|-personalization-gui\.png|-personalization-gui_yubikey-personalization-gui\.png)', # only key; NOT: turkey, keyboard, keygen, etc
         r'(?<!/ISRG_)(?<!grass|snake|birth|colic|coral|arrow|blood|orris|bread|squaw|fever|itter|inger)(?<!worm|alum|rose|club|pink|beet|poke|musk|fake)(?<!tap|che|red|she)(?<!sc|ch)(root)(?!stalk|worm|stock|less|s)', # only root; NOT: grassroots, rootless, chroot, etc
         r'(?<!non)(secret)(?!agogue|ion|ary|ari)', # only secret, secrets; NOT: nonsecret, secretary, etc
-        r'(?<!non|set)(priv)(?!ate\.CoreLib|atdocent|atdozent|iledge|ates|ation|ateer|atise|arize|atist|ation|er|et|es|ed|ie|al|y|e)', # only priv, private; NOT: nonprivate, privatise, etc
+        r'(?<!non|set)(priv)(?!ate\.CoreLib|_resort|atdocent|atdozent|iledge|ates|ation|ateer|atise|arize|atist|ation|er|et|es|ed|ie|al|y|e)', # only priv, private; NOT: nonprivate, privatise, etc
         r'(?<!com|sur|out)(pass)(?!word-symbolic\.svg|epied|erine|enger|along|ible|erby|able|less|band|ivi|ive|age|ade|ion|ed|el|er|wd)', # only pass, password; NOT: compass, passage, etc
         r'(?<!over|fore)(?<!be)(shadow)(?!coord|graph|iest|like|less|map|ing|ily|ers|box|ier|er|ed|y|s)', # only shadow; NOT: foreshadow, shadows, etc
         r'(?<!na|sa|ac)(cred)(?!ulous|ulity|uliti|enza|ence|ibl|ibi|al|it|o)', # only cred, creds, credentials; NOT: sacred, credence, etc
@@ -1107,7 +1107,7 @@ def composeSuffix(l, keysToHide):
         [l.pop(k) for k in keysToHide if l.get(k)]
 
     toDropStalePrefixesKeys = ('path_prefix', 'srcpath_prefix', 'target_prefix', 'addr_prefix', 'peer_addr_prefix')
-    [l.pop(k) for k in toDropStalePrefixesKeys if l.get(k)]  # drop prefixes which unrelevant anymore
+    [l.pop(k) for k in toDropStalePrefixesKeys if l.get(k)]  # drop unrelevant at this point prefixes
 
     keys = sorted(l.keys())
     if 'addr_diffs' in keys:  # move to the end
@@ -1164,7 +1164,7 @@ def colorize(string_, color, style='0'):
     }
 
     if not color in colorTable:
-        raise ValueError('Incorrect color specified: ' + color)
+        raise ValueError(f'Incorrect color specified: {color}')
 
     string_ = f'\033[{style};{colorTable[color]}m{string_}\033[0m'
 
@@ -2379,6 +2379,7 @@ def isSupportedDistro():
     supportedDistros = (
          # file                 # key in file        # value(s) in file
         ('/usr/lib/os-release', 'VERSION_CODENAME', {'bookworm',  #  Debian 12
+                                                     'trixie',    #  Debian 13
                                                      'jammy',     # *Ubuntu 22.04
                                                      'noble',     # *Ubuntu 24.04
                                                     }),
@@ -2661,7 +2662,7 @@ def handleArgs():
     allSuffixKeys = ['comm', 'operation', 'mask', '*_diffs', 'error', 'info', 'class']
 
     parser = argparse.ArgumentParser(description='Suggest AppArmor rules')
-    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.14')
+    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.15')
     parser.add_argument('--legend', action='store_true',
                         default=False,
                         help='Display color legend')
@@ -2731,13 +2732,13 @@ if __name__ == '__main__':
     try:
         from systemd import journal
     except ModuleNotFoundError:
-        Debian = colorize('# Debian/Ubuntu/Mint', 'Bright Cyan')
-        Arch   = colorize('# Arch',               'Bright Cyan')
-        SUSE   = colorize('# openSUSE/SLE',       'Bright Cyan')
+        _Debian = colorize('# Debian/Ubuntu/Mint', 'Bright Cyan')
+        _Arch   = colorize('# Arch',               'Bright Cyan')
+        _SUSE   = colorize('# openSUSE/SLE',       'Bright Cyan')
         raise ModuleNotFoundError(f"""'systemd' module not found! Install with:
-$ sudo apt install python3-systemd  {Debian}
-# pacman -Sy python-systemd         {Arch}
-# zypper in python3-systemd         {SUSE}""")
+$ sudo apt install python3-systemd  {_Debian}
+# pacman -Sy python-systemd         {_Arch}
+# zypper in python3-systemd         {_SUSE}""")
 
     args = handleArgs()
 

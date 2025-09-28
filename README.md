@@ -75,6 +75,7 @@ $ sudo install -m 755 -o root -g root aa_suggest.py /usr/local/bin/          # i
 
 ## Supported distros
 - Debian 12
+- Debian 13
 - Ubuntu 22.04
 - Ubuntu 24.04 (`audit` fix)
 - OpenSUSE Tumbleweed (`audit` fix)
