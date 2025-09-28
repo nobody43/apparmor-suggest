@@ -84,7 +84,7 @@ On certain distros/configurations AppArmor logs in journal could be taken over b
 ```sh
 sudo systemctl enable systemd-journald-audit.socket
 ```
-Return to default state when not needed:
+Return the control to `audit` when needed:
 ```sh
 sudo systemctl disable systemd-journald-audit.socket
 ```
