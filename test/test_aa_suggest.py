@@ -4,7 +4,7 @@
 
 import unittest
 import copy
-from aa_suggest import *
+from ../aa_suggest import *
 
 class simpleTests(unittest.TestCase):
 
