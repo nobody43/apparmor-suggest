@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Version: 0.8.15
 # Min AppArmor version: 3.0.8 (Debian 12)
-# Max AppArmor version: 4.0.1 (Ubuntu 24.04 LTS), stop using if not updated - it will provide ambiguous results
+# Max AppArmor version: 4.1.0 (Debian 13), stop using if not updated - it will provide ambiguous results
 
 # line, l - single log line in form of dictionary
 # normalize - prepare line values for a possible merge; make keys consistent
@@ -34,12 +34,13 @@ import random
 import copy
 import os
 
+
 def adaptFilePath(l, key, ruleStyle):
-    '''Applied early to fully handle duplicates.
-       For file paths, not necessarily file lines.
-       Watch out for bugs: launchpad #1856738
-       Do only one capture per regex helper, otherwise diffs will be a mess (will match recursively)
-    '''
+    """Applied early to fully handle duplicates.
+    For file paths, not necessarily file lines.
+    Watch out for bugs: launchpad #1856738
+    Do only one capture per regex helper, otherwise diffs will be a mess (will match recursively)
+    """
     # Always surround these helpers with other charactes or new/endlines
     # Capturing group must not be optional '?', but always provide at least empty '|' match
     # Mix of regex and pcre styles!; 'C' for capture
@@ -525,6 +526,7 @@ def adaptFilePath(l, key, ruleStyle):
 
     return l
 
+
 def adaptDbusPaths(lines, ruleStyle):
 
     # First capture but not (second) match; 'C' for capture
@@ -565,7 +567,7 @@ def adaptDbusPaths(lines, ruleStyle):
             if not l.get('path'):  # skip bind, eavesdrop, etc
                 continue
 
-            for r,d,a in regexpToMacro:
+            for r, d, a in regexpToMacro:
                 if ruleStyle == 'AppArmor.d' and a:
                     macro = a
                 else:
@@ -582,8 +584,9 @@ def adaptDbusPaths(lines, ruleStyle):
 
     return lines
 
+
 def findTempTailPair(filename, ruleStyle):
-    '''Intended only for temp pairs'''
+    """Intended only for temp pairs"""
     # Fallback to default if style have 'None'
     tempRegexesToMacro = (
         # regex                 # default style      # AppArmor.d style
@@ -597,7 +600,7 @@ def findTempTailPair(filename, ruleStyle):
     # /usr/share/applications/mimeinfo.cache
     # /usr/share/applications/.mimeinfo.cache.JLI8D2
 
-    for r,d,a in tempRegexesToMacro:
+    for r, d, a in tempRegexesToMacro:
         suffixRe = re.search(r, filename)
         if suffixRe:
             tempTail = suffixRe.group(0)
@@ -613,12 +616,13 @@ def findTempTailPair(filename, ruleStyle):
 
     return (tempTail, macro)
 
-def highlightWords(string_, isHighlightVolatile=True):
-    '''Sensitive words should not have false-positives, volatile words are expected to have false-positives
-       Volatile is for those paths which could not be unequivocally normalized
-       Repeating, non-positional patterns must be greedy
-       Capturing group is the highlight'''
 
+def highlightWords(string_, isHighlightVolatile=True):
+    """Sensitive words should not have false-positives, volatile words are expected to have false-positives
+    Volatile is for those paths which could not be unequivocally normalized
+    Repeating, non-positional patterns must be greedy
+    Capturing group is the highlight
+    """
     ignorePath = '/usr/share'
 
     grn  = r'\x1b\[0;32m' # (escaped) regular green
@@ -696,6 +700,7 @@ def highlightWords(string_, isHighlightVolatile=True):
 
     return string_
 
+
 def findExecType(path):
 
     always_ix = {  # not for programs with network access or large scope
@@ -762,6 +767,7 @@ def findExecType(path):
 
     return result
 
+
 def adaptProfileAutoTransitions(l):
 
     # Move automatic transition to the parent
@@ -781,8 +787,9 @@ def adaptProfileAutoTransitions(l):
 
     return l
 
+
 def isBaseAbstractionTransition(l, profile_):
-    '''Only for file lines. Must be done after normalization and before adaption. Temporary solution?'''
+    """Only for file lines. Must be done after normalization and before adaption. Temporary solution?"""
     multiarch   = r'(?:[^/]+-linux-(?:gnu|musl)(?:[^/]+)?|@{multiarch})'
     proc        = r'(?:/proc|@{PROC})'
     etc_ro      = r'(?:/usr/etc|/etc|@{etc_ro})'
@@ -854,7 +861,7 @@ def isBaseAbstractionTransition(l, profile_):
     if '▶' in profile_ or isTransitionComm(l.get('comm')):  # transition features
         path      = l.get('path')
         pathMasks = l.get('mask')
-        for regex,mask in baseAbsRules.items():
+        for regex, mask in baseAbsRules.items():
             if 'a' in pathMasks and \
                'w' in mask:     # 'w' consumes 'a'
 
@@ -868,11 +875,13 @@ def isBaseAbstractionTransition(l, profile_):
 
     return result
 
+
 def findBootId(positionalId):
 
     raise NotImplementedError('Handling previous boot IDs is not yet implemented.')
 
     return None
+
 
 def grabJournal(args):
 
@@ -901,8 +910,9 @@ def grabJournal(args):
 
     return rawLines
 
+
 def isDbusJournalLine(entry):
-    '''"_SELINUX_CONTEXT" is arbitrary, don't use for higher trusts'''
+    """'_SELINUX_CONTEXT' is arbitrary, don't use for higher trusts"""
     if   entry.get('SYSLOG_IDENTIFIER') == 'dbus-daemon':
         result = True
     elif entry.get('_SELINUX_CONTEXT')  == 'dbus-daemon':
@@ -915,6 +925,7 @@ def isDbusJournalLine(entry):
         result = False
 
     return result
+
 
 def findLogLines(rawLines, args):
 
@@ -935,7 +946,7 @@ def findLogLines(rawLines, args):
         trust         = normalizedLine[1]  # dirty or None, expected to be overwritten further
         lineType = findLineType(processedLine)
         if lineType.startswith('DBUS'):  # drop non-informative DBus data
-            [processedLine.pop(k) for k,v in toDropDbusKeyValues_inLines.items() if processedLine.get(k) == v]
+            [processedLine.pop(k) for k, v in toDropDbusKeyValues_inLines.items() if processedLine.get(k) == v]
 
         if not lineType.startswith('DBUS') and isDbusJournalLine(entry):  # came from DBus, but not a DBus line
             trust = 1
@@ -999,6 +1010,7 @@ def findLogLines(rawLines, args):
 
     return (lineDicts, latestTimestamp)
 
+
 def normalizeJournalLine(rawLine, args):
 
     toSkipKeys = {'audit:', 'AVC', 'capability', 'denied_mask', 'denied', 'ouid', 'sauid', 'fsuid', 'pid', 'peer_pid', 'type', 'class'}
@@ -1047,8 +1059,9 @@ def normalizeJournalLine(rawLine, args):
 
     return (lineDict, trust)
 
+
 def normalizeProfileName(l):
-    '''Dealing early with regular operation format (string)'''
+    """Dealing early with regular operation format (string)"""
     if l.get('operation').startswith('dbus'):
         l['profile'] = l.pop('label')
 
@@ -1084,6 +1097,7 @@ def normalizeProfileName(l):
 
     return l
 
+
 def getBaseBin(path):
 
     grn  = r'\x1b\[0;32m' # (escaped) regular green
@@ -1096,8 +1110,9 @@ def getBaseBin(path):
 
     return result
 
+
 def composeSuffix(l, keysToHide):
-    '''Handles line leftovers'''
+    """Handles line leftovers"""
     if 'ALL' in keysToHide:
         l = {}
     elif keysToHide:
@@ -1116,7 +1131,7 @@ def composeSuffix(l, keysToHide):
     l = {i: l[i] for i in keys}
 
     s = ''
-    for k,v in l.items():
+    for k, v in l.items():
         if v == '':  # skip empty
             continue
 
@@ -1149,9 +1164,11 @@ def composeSuffix(l, keysToHide):
 
     return s
 
+
 def colorize(string_, color, style='0'):
-    '''https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
-    No nested colorization'''
+    """https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+    No nested colorization
+    """
     colorTable = {
         'Black':          '30', 'Bright Black':   '90',
         'Red':            '31', 'Bright Red':     '91',
@@ -1170,6 +1187,7 @@ def colorize(string_, color, style='0'):
 
     return string_
 
+
 def colorizeBySpan(string_, color, span_):
 
     prefix = string_[:span_[0]]
@@ -1181,8 +1199,9 @@ def colorizeBySpan(string_, color, span_):
 
     return string_
 
+
 def highlightSpecialChars(string_):
-    '''Better to apply after alignment'''
+    """Better to apply after alignment"""
     charsToColors = {
         '=': 'Bright Blue',
         '(': 'Cyan',
@@ -1191,14 +1210,15 @@ def highlightSpecialChars(string_):
         "'": 'Cyan',
     }
 
-    for char,color in charsToColors.items():
+    for char, color in charsToColors.items():
         if char in string_:
             string_ = string_.replace(char, colorize(char, color))
 
     return string_
 
+
 def hexToString(path_):
-    '''For whitespaces and localized paths'''
+    """For whitespaces and localized paths"""
     # unix addr
     if path_.startswith('@'):
         path_ = path_.removeprefix('@')
@@ -1224,7 +1244,7 @@ def hexToString(path_):
 
 
 def substituteGroup(subWhat, subWith, regexp_):
-    '''Substitute the capturing group'''
+    """Substitute the capturing group"""
     whatRe = re.search(regexp_, subWhat)
     if whatRe:
         if   len(whatRe.groups()) == 0 or whatRe.group(1) is None:
@@ -1255,10 +1275,11 @@ def substituteGroup(subWhat, subWith, regexp_):
 
     return (resultPath, span, oldDiff)
 
+
 def updatePostcolorizationDiffs(l, currentSpan, currentDiff, key):
-    '''After each replacement in path, spans determined for colorization can and will shift, breaking the colorization.
-       Such cases are being adjusted here.
-    '''
+    """After each replacement in path, spans determined for colorization can and will shift, breaking the colorization.
+    Such cases are being adjusted here.
+    """
     diffs = l.get(f'{key}_diffs')
     if diffs:
         # Determine the shift padding
@@ -1277,7 +1298,7 @@ def updatePostcolorizationDiffs(l, currentSpan, currentDiff, key):
         rightDiffs = sortedDiffs[currentIndex+1:]  # do not match the current item
 
         # Only elements to the right need to be shifted
-        for s,d in rightDiffs:
+        for s, d in rightDiffs:
             newSpan = (s[0] + padding, s[1] + padding)
             leftDiffs.append([newSpan, d])
 
@@ -1291,8 +1312,9 @@ def updatePostcolorizationDiffs(l, currentSpan, currentDiff, key):
 
     return l
 
+
 def findLineType(l):
-    '''Handles regular and custom operations (sets).'''
+    """Handles regular and custom operations (sets)."""
     fileOperations = {
         'exec',        'open',
         'getattr',     'mknod',
@@ -1304,7 +1326,7 @@ def findLineType(l):
         'truncate',    'link',
         'connect',     'file_perm',
         'sendmsg',     'recvmsg',
-        'file_receive',
+        'file_receive', 'file_mprotect',
         'file_inherit',
     }
     networkOperations = {
@@ -1369,8 +1391,9 @@ def findLineType(l):
 
     return result
 
+
 def composeFileMask(maskSet, transitionMask, isConvertToUsable):
-    '''Convert mask set to string, sorting by pattern and highlight special cases.'''
+    """Convert mask set to string, sorting by pattern and highlight special cases."""
     maskPrecedence = 'mriPUCpuxwadclk'
 
     toColorize = {}
@@ -1400,7 +1423,7 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
     accompaniedMasks = {
         'x': 'r',  # 'x' should be always accompanied by 'r'
     }
-    for k,v in accompaniedMasks.items():
+    for k, v in accompaniedMasks.items():
         if len(k) != 1 or len(v) != 1:
             raise NotImplementedError('Accompanied key:value masks are expected to be single characters')
 
@@ -1436,7 +1459,7 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
         ('x', 'wadclk'),
         ('m', 'wadclk'),
     )
-    for s1,s2 in dangerousCombinations:
+    for s1, s2 in dangerousCombinations:
         if len(s1) >= 2:  # sanity
             raise ValueError('Leading mask for comparison could only be a single character.')
 
@@ -1447,11 +1470,11 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
                 toColorize[subS] = ('Red', '7')  # background
 
     # Final colorization
-    for k,v in toColorize.items():
+    for k, v in toColorize.items():
         color      = v[0]
         colorStyle = v[1]
         highlight = colorize(k, color, colorStyle)
-        for n,i in enumerate(maskList):
+        for n, i in enumerate(maskList):
             if k == i:
                 maskList[n] = highlight
                 break
@@ -1464,8 +1487,9 @@ def composeFileMask(maskSet, transitionMask, isConvertToUsable):
 
     return maskString
 
+
 def composeMembers(lines):
-    '''Sort and encase DBus members. Expected after processing and before line sorting'''
+    """Sort and encase DBus members. Expected after processing and before line sorting"""
     for profile in lines:
         for l in lines[profile]:
             if l.get('member'):
@@ -1478,8 +1502,9 @@ def composeMembers(lines):
 
     return lines
 
+
 def groupLinesByProfile(lines):
-    '''Group all profile-related log lines as list-value under each profile as key'''
+    """Group all profile-related log lines as list-value under each profile as key"""
     profiles = []
     for l in lines:
         p = l.get('profile')
@@ -1500,13 +1525,14 @@ def groupLinesByProfile(lines):
 
     return dictOfListsOfLines_byProfile
 
+
 def makeHashable(l):
-    '''With limited case coverage'''
+    """With limited case coverage"""
     if l.get('timestamp'):
         raise ValueError('Hashing a line with a timestamp will always result in unique hash')
 
     newL = dict(l)
-    for k,v in newL.items():
+    for k, v in newL.items():
         if   isinstance(v, set):
             newL[k] = sorted(v)
 
@@ -1517,8 +1543,9 @@ def makeHashable(l):
 
     return result
 
+
 def mergeDictsBySingleKey(lines, key):
-    '''Merge dictionaries if specified key is the only difference, preserving both keys'''
+    """Merge dictionaries if specified key is the only difference, preserving both keys"""
     newDictOfListsOfLines_byProfile = {}
     for profile in lines:
         differences_byId = {}
@@ -1548,7 +1575,7 @@ def mergeDictsBySingleKey(lines, key):
             suffix['timestamp'] = timestamp  # use only the latest timestamp for duplicates
             suffixes_byId[lineId] = suffix
 
-        for lineId,merged in differences_byId.items():
+        for lineId, merged in differences_byId.items():
             logLine = suffixes_byId.get(lineId)
             logLine[key] = merged
             newLogLines_forProfile.append(logLine)
@@ -1556,6 +1583,7 @@ def mergeDictsBySingleKey(lines, key):
         newDictOfListsOfLines_byProfile[profile] = newLogLines_forProfile
 
     return newDictOfListsOfLines_byProfile
+
 
 def mergeDictsByKeyPair(lines, firstKey, secondKey):
 
@@ -1598,7 +1626,7 @@ def mergeDictsByKeyPair(lines, firstKey, secondKey):
             suffixes_byId[lineId] = suffix
 
         # Collect back the lines for each profile
-        for lineId,sublist in pair_byId.items():
+        for lineId, sublist in pair_byId.items():
             logLine = suffixes_byId.get(lineId)
             mergedFirstVals  = sublist[0]
             mergedSecondVals = sublist[1]
@@ -1610,8 +1638,9 @@ def mergeDictsByKeyPair(lines, firstKey, secondKey):
 
     return newDictOfListsOfLines_byProfile
 
+
 def mergeCommMasks(lines):
-    '''Copy of mergeDictsByKeyPair() for merging comms and thier masks'''
+    """Copy of mergeDictsByKeyPair() for merging comms and thier masks"""
     newDictOfListsOfLines_byProfile = {}
     for profile in lines:
         newLogLines_forProfile = []
@@ -1686,8 +1715,9 @@ def mergeCommMasks(lines):
 
     return newDictOfListsOfLines_byProfile
 
+
 def mergeLinkMasks(lines):
-    '''For merging link's source/target and their masks and operations'''
+    """For merging link's source/target and their masks and operations"""
     for profile in lines:
         # Find all link lines
         allLinkedLines = []
@@ -1735,6 +1765,7 @@ def mergeLinkMasks(lines):
 
     return lines
 
+
 def mergeExactDuplicates(lines):
 
     newDictOfListsOfLines_byProfile = {}
@@ -1748,7 +1779,7 @@ def mergeExactDuplicates(lines):
             uniqueLines_byId[lineId] = l
             timestamps_byId[lineId] = timestamp  # use only the latest timestamp for duplicates
 
-        for lineId,merged in uniqueLines_byId.items():
+        for lineId, merged in uniqueLines_byId.items():
             logLine = uniqueLines_byId.get(lineId)
             logLine['timestamp'] = timestamps_byId.get(lineId)
             newLogLines_forProfile.append(logLine)
@@ -1757,9 +1788,11 @@ def mergeExactDuplicates(lines):
 
     return newDictOfListsOfLines_byProfile
 
+
 def adaptTempPaths(lines, ruleStyle):
-    '''Make similar path-pairs look the same for further merging. Could normalize masks. Rewrite is welcome
-       Contrary to specific file path adaption, this function is designed for any path pairs'''
+    """Make similar path-pairs look the same for further merging. Could normalize masks. Rewrite is welcome
+    Contrary to specific file path adaption, this function is designed for any path pairs
+    """
     for profile in lines:
         # Determine which read paths have write duplicates and normalize
         for l in lines[profile]:
@@ -1839,13 +1872,14 @@ def adaptTempPaths(lines, ruleStyle):
 
     return lines
 
+
 def isRequestedProfile(currentProfile, requestedProfiles):
-    '''For profiles and profile peers (labels)'''
+    """For profiles and profile peers (labels)"""
     result = False
     if not requestedProfiles:  # all
         result = True
 
-    elif not currentProfile:   # no 'profile_peer' key
+    elif not currentProfile:  # no 'profile_peer' key
         result = False
 
     elif currentProfile in requestedProfiles:
@@ -1880,6 +1914,7 @@ def isRequestedProfile(currentProfile, requestedProfiles):
 
     return result
 
+
 def isRequestedOperation(currentOperations, requestedOperations):
 
     result = False
@@ -1894,9 +1929,17 @@ def isRequestedOperation(currentOperations, requestedOperations):
 
     return result
 
+
 def normalizeAndGroup(lines, args):
-    '''Split lines by type and convert specific values to sets for further merging'''
-    toAdaptPathKeys = ('path', 'srcpath', 'target', 'interface', 'addr', 'peer_addr')  # must be done after normalization and before stacking
+    """Split lines by type and convert specific values to sets for further merging"""
+    toAdaptPathKeys = (
+        'path',
+        'srcpath',
+        'target',
+        'interface',
+        'addr',
+        'peer_addr',
+    )  # must be done after normalization and before stacking
 
     fileDict = {}
     dbusDict = {}
@@ -1958,7 +2001,7 @@ def normalizeAndGroup(lines, args):
                 if 'dbus' in args.type:
                     if l.get('member'):
                         l['member'] = {l.pop('member')}
- 
+
                     dbusL.append(l)
 
             elif findLineType(l) == 'NETWORK':
@@ -2041,12 +2084,22 @@ def normalizeAndGroup(lines, args):
         if pivotL:   pivotDict[profile]   = pivotL
         if unknownL: unknownDict[profile] = unknownL
 
-    return fileDict,   dbusDict,  networkDict, \
-           unixDict,   capDict,   signalDict,  \
-           ptraceDict, mountDict, pivotDict,  unknownDict
+    return (
+        fileDict,
+        dbusDict,
+        networkDict,
+        unixDict,
+        capDict,
+        signalDict,
+        ptraceDict,
+        mountDict,
+        pivotDict,
+        unknownDict,
+    )
+
  
 def isTransitionComm(comm_):
-    '''If any element is a transition comm (highlighted prior)'''
+    """If any element is a transition comm (highlighted prior)"""
     blu = '\x1b[0;34m'
     result = False
     for i in comm_:
@@ -2055,6 +2108,7 @@ def isTransitionComm(comm_):
             break
 
     return result
+
 
 def mergeNestedDictionaries(dictOne, dictTwo):
 
@@ -2077,8 +2131,9 @@ def mergeNestedDictionaries(dictOne, dictTwo):
 
    return newDict
 
+
 def composeRule(l, args):
-    '''Compose final rule and insert it into dictionary line.'''
+    """Compose final rule and insert it into dictionary line."""
     if l.get('profile_flags'):
         flagsStr = ', '.join(sorted(l.pop('profile_flags')))
         rule = f'flags=({flagsStr})'
@@ -2210,9 +2265,20 @@ def composeRule(l, args):
 
     return l  # leftovers
 
-def sortLines(fileL,   dbusL,  networkL,
-              unixL,   capL,   signalL,
-              ptraceL, mountL, pivotL,  unknownL, args):
+
+def sortLines(
+    fileL,
+    dbusL,
+    networkL,
+    unixL,
+    capL,
+    signalL,
+    ptraceL,
+    mountL,
+    pivotL,
+    unknownL,
+    args,
+):
 
     allDicts = mergeNestedDictionaries(fileL,    dbusL)
     allDicts = mergeNestedDictionaries(allDicts, networkL)
@@ -2271,8 +2337,9 @@ def sortLines(fileL,   dbusL,  networkL,
 
     return sortedList
 
+
 def colorizeLines(plainLines):
-    '''& postprocess'''
+    """& postprocess"""
     # Replace 'peer' after sorting, if it's the same as 'profile'
     for l in plainLines:
         if l.get('peer') == l.get('profile'):
@@ -2285,7 +2352,7 @@ def colorizeLines(plainLines):
             if l.get(k):
                 diffs = l.get(k)
                 sortedDiffs = sorted(diffs, key=lambda t: t[0], reverse=True) # colorize from the end
-                for span,diff in sortedDiffs:
+                for span, diff in sortedDiffs:
                     originalPathKey = k.removesuffix('_diffs')
                     if diff == '':  # colorize differently and remove from display
                         color = 'White'
@@ -2298,7 +2365,13 @@ def colorizeLines(plainLines):
                 l[k] = sorted(diffs, key=lambda t: t[0])  # prepare for display
 
     toHighlightWordsKeys = (
-        'path', 'srcpath', 'target', 'interface', 'addr', 'peer_addr',
+        'path',
+        'srcpath',
+        'target',
+        'interface',
+        'addr',
+        'peer_addr',
+
     )
     for l in plainLines:
         for k in toHighlightWordsKeys:
@@ -2346,24 +2419,25 @@ def colorizeLines(plainLines):
                     l[k] = l.get(k).replace('▶', colorize('▶', 'Blue'))
 
         trustToColor = {
-            10:  None,
-            9:  'White',
-            8:  'Cyan',
-            7:  'Blue',
-            6:  'Bright Blue',
-            5:  'Yellow',
-            4:  'Bright Yellow',
-            3:  'Red',
-            2:  'Bright Red',
-            1:  'Magenta',
-            0:  'Bright Magenta',
+            10: None,
+            9: 'White',
+            8: 'Cyan',
+            7: 'Blue',
+            6: 'Bright Blue',
+            5: 'Yellow',
+            4: 'Bright Yellow',
+            3: 'Red',
+            2: 'Bright Red',
+            1: 'Magenta',
+            0: 'Bright Magenta',
         }
         l['trust_color'] = trustToColor[l.pop('trust')]
 
     return plainLines
 
+
 def adjustPadding(str_, targetPadding_):
-    '''By decolorizing (a copy). Temp?'''
+    """By decolorizing (a copy). Temp?"""
 
     strRe = re.findall(r'\\033\[\d;\d{2}m|\\033\[0m', str_)
     if strRe:
@@ -2372,6 +2446,7 @@ def adjustPadding(str_, targetPadding_):
         result = targetPadding_
 
     return result
+
 
 def isSupportedDistro():
 
@@ -2387,7 +2462,7 @@ def isSupportedDistro():
                                                     }),
     )
     isSupported = False
-    for p,k,v in supportedDistros:
+    for p, k, v in supportedDistros:
         path = pathlib.Path(p)
         if path.is_file():
             with open(path, 'r') as f:
@@ -2396,9 +2471,7 @@ def isSupportedDistro():
                     fileKey = part[0].strip()
                     fileVal = part[2].strip()
                     fileVal = fileVal.removeprefix('"').removesuffix('"')
-                    if fileKey == k and \
-                       fileVal in v:
-
+                    if fileKey == k and fileVal in v:
                         isSupported = True
                         break
 
@@ -2407,8 +2480,9 @@ def isSupportedDistro():
 
     return isSupported
 
+
 def failIfNotConfined(profileBasename):
-    '''Only covers confinement, not necessarily enforcement'''
+    """Only covers confinement, not necessarily enforcement"""
     randomTail = ''.join(random.choice(string.ascii_letters) for i in range(8))
     path = f'/dev/shm/{profileBasename}.am_i_confined.{randomTail}'
 
@@ -2421,17 +2495,21 @@ def failIfNotConfined(profileBasename):
     f = pathlib.Path(path)
     if f.is_file():
         f.unlink()
-        raise EnvironmentError(f'''The process is not confined by AppArmor. Refusing to function. Expected action:\n
+        raise EnvironmentError(
+            f'''The process is not confined by AppArmor. Refusing to function. Expected action:\n
 $ sudo install -m 600 -o root -g root apparmor.d/{profileBasename} /etc/apparmor.d/
-$ sudo apparmor_parser --add /etc/apparmor.d/{profileBasename}''')
+$ sudo apparmor_parser --add /etc/apparmor.d/{profileBasename}'''
+        )
 
     return None
+
 
 def findPadding(plainLines):
 
     padding = {}
 
     return padding
+
 
 def display(plainLines, padding_, previousTimestamp, args):
 
@@ -2498,8 +2576,9 @@ def display(plainLines, padding_, previousTimestamp, args):
 
     return None
 
+
 def findPreviousTimestamp(pathStr):
-    '''Read previously saved epoch timestamp from a file'''
+    """Read previously saved epoch timestamp from a file"""
     path = pathlib.Path(pathStr)
     dirPath = path.parent
     errors = {}
@@ -2508,31 +2587,36 @@ def findPreviousTimestamp(pathStr):
             if dirPath.stat().st_uid != 0 or oct(dirPath.stat().st_mode) != '0o40700':
                 result = -10  # poisoning
                 poisoning = colorize('poisoning', 'Magenta')
-                errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 21  # exit code
+                errors[
+                    f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."
+                ] = 21  # exit code
             else:
                 result = int(path.read_text())
-    
+
         elif path.is_file():
             result = int(path.read_text())
-    
+
         elif not path.exists():
             result = -1  # first run
-    
+
         else:
             result = -2  # unknown
 
     except PermissionError as e:
         result = -10  # poisoning
         poisoning = colorize('poisoning', 'Magenta')
-        errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 21  # exit code
+        errors[
+            f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."
+        ] = 21  # exit code
 
     except:  # never fail
         result = -3  # unknown
 
     return (errors, result)
 
+
 def rewriteLatestTimestamp(pathStr, timestamp):
-    '''(Re)write latest epoch timestamp to a file'''
+    """(Re)write latest epoch timestamp to a file"""
     path = pathlib.Path(pathStr)
     dirPath = path.parent
 
@@ -2540,7 +2624,9 @@ def rewriteLatestTimestamp(pathStr, timestamp):
     if dirPath.exists():
         if dirPath.stat().st_uid != 0 or oct(dirPath.stat().st_mode) != '0o40700':
             poisoning = colorize('poisoning', 'Magenta')
-            errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 20  # exit code
+            errors[
+                f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."
+            ] = 20  # exit code
 
     else:
         dirPath.mkdir(mode=0o700)
@@ -2554,12 +2640,15 @@ def rewriteLatestTimestamp(pathStr, timestamp):
 
     except PermissionError as e:
         poisoning = colorize('poisoning', 'Magenta')
-        errors[f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."] = 20  # exit code
+        errors[
+            f"Potential timestamp {poisoning}! Explore '{dirPath}/' permissions."
+        ] = 20  # exit code
 
     except:  # never fail
         pass
 
     return (errors, isSuccessfullWrite)
+
 
 def displayLegend():
 
@@ -2656,56 +2745,126 @@ Note: you might want to change your palette to more distinctive colors"""
 
     return None
 
+
 def handleArgs():
 
-    allLineTypes  = ['file', 'dbus', 'unix', 'network', 'signal', 'ptrace', 'cap', 'mount', 'pivot', 'unknown']
-    allSuffixKeys = ['comm', 'operation', 'mask', '*_diffs', 'error', 'info', 'class']
+    allLineTypes = [
+        'file',
+        'dbus',
+        'unix',
+        'network',
+        'signal',
+        'ptrace',
+        'cap',
+        'mount',
+        'pivot',
+        'unknown',
+    ]
+    allSuffixKeys = [
+        'comm',
+        'operation',
+        'mask',
+        '*_diffs',
+        'error',
+        'info',
+        'class'
+    ]
 
     parser = argparse.ArgumentParser(description='Suggest AppArmor rules')
-    parser.add_argument('-v', '--version', action='version', version='aa_suggest.py 0.8.15')
-    parser.add_argument('--legend', action='store_true',
-                        default=False,
-                        help='Display color legend')
-    parser.add_argument('-b', '--boot-id', action='store', type=int,
-                        choices=range(-14, 1),
-                        default=0,
-                        help='Specify (previous) boot id')
-    parser.add_argument('-t', '--type', action='append',
-                        choices=allLineTypes,
-                        help='Handle only specified rule type')
-    parser.add_argument('-p', '--profile', action='append',
-                        default=[],
-                        help='Handle only specified profile')
-    parser.add_argument('-l', '--peer', action='append',
-                        help='Handle only specified peer profile')
-    parser.add_argument('-o', '--operation', action='append',
-                        help='Show only lines containing specified operation. Does not affect merging')
-    parser.add_argument('--hide-keys', action='append',
-                        choices=allSuffixKeys + ['ALL'],
-                        default=[],
-                        help='Hide specified keys in suffix. Does not affect merging')
-    parser.add_argument('--drop-comm', action='store_true',
-                        default=False,
-                        help='Drop comm key for more aggressive merging')
-    parser.add_argument('--keep-base-abs-transitions', action='store_true',
-                        default=False,
-                        help="Do not drop automatic transition lines '▶' which rules are present in 'base' abstraction")
-    parser.add_argument('--keep-status', action='store_true',
-                        help="Do not drop 'apparmor' status key. Affects merging")
-    parser.add_argument('--keep-status-audit', action='store_true',
-                        help="Do not drop 'AUDIT' log lines. Implies '--keep-status'")
-    parser.add_argument('--keep-ports', action='store_true',
-                        help="Do not drop network 'lport' and 'fport' keys")
-    parser.add_argument('-c', '--convert-file-masks', action='store_true',
-                        help='Convert requested file masks to currently supported variants. Will be deprecated (changed)')
-    parser.add_argument('-s', '--sort', action='store',
-                        choices=['profile', 'peer', 'path', 'interface', 'member', 'timestamp'],
-                        default='profile',
-                        help="Sort by. 'profile' is the default")
-    parser.add_argument('-S', '--style', action='store',
-                        choices=['default', 'AppArmor.d'],
-                        default='default',
-                        help="Style preset. Stock or 'roddhjav/apparmor.d'. Affects custom tunables")
+    parser.add_argument(
+        '-v', '--version', action='version', version='aa_suggest.py 0.8.15'
+    )
+    parser.add_argument(
+        '--legend', action='store_true', default=False, help='Display color legend'
+    )
+    parser.add_argument(
+        '-b',
+        '--boot-id',
+        action='store',
+        type=int,
+        choices=range(-14, 1),
+        default=0,
+        help='Specify (previous) boot id',
+    )
+    parser.add_argument(
+        '-t',
+        '--type',
+        action='append',
+        choices=allLineTypes,
+        help='Handle only specified rule type',
+    )
+    parser.add_argument(
+        '-p',
+        '--profile',
+        action='append',
+        default=[],
+        help='Handle only specified profile',
+    )
+    parser.add_argument(
+        '-l', '--peer', action='append', help='Handle only specified peer profile'
+    )
+    parser.add_argument(
+        '-o',
+        '--operation',
+        action='append',
+        help='Show only lines containing specified operation. Does not affect merging',
+    )
+    parser.add_argument(
+        '--hide-keys',
+        action='append',
+        choices=allSuffixKeys + ['ALL'],
+        default=[],
+        help='Hide specified keys in suffix. Does not affect merging',
+    )
+    parser.add_argument(
+        '--drop-comm',
+        action='store_true',
+        default=False,
+        help='Drop comm key for more aggressive merging',
+    )
+    parser.add_argument(
+        '--keep-base-abs-transitions',
+        action='store_true',
+        default=False,
+        help="Do not drop automatic transition lines '▶' which rules are present in 'base' abstraction",
+    )
+    parser.add_argument(
+        '--keep-status',
+        action='store_true',
+        help="Do not drop 'apparmor' status key. Affects merging",
+    )
+    parser.add_argument(
+        '--keep-status-audit',
+        action='store_true',
+        help="Do not drop 'AUDIT' log lines. Implies '--keep-status'",
+    )
+    parser.add_argument(
+        '--keep-ports',
+        action='store_true',
+        help="Do not drop network 'lport' and 'fport' keys",
+    )
+    parser.add_argument(
+        '-c',
+        '--convert-file-masks',
+        action='store_true',
+        help='Convert requested file masks to currently supported variants. Will be deprecated (changed)',
+    )
+    parser.add_argument(
+        '-s',
+        '--sort',
+        action='store',
+        choices=['profile', 'peer', 'path', 'interface', 'member', 'timestamp'],
+        default='profile',
+        help="Sort by. 'profile' is the default",
+    )
+    parser.add_argument(
+        '-S',
+        '--style',
+        action='store',
+        choices=['default', 'AppArmor.d'],
+        default='default',
+        help="Style preset. Stock or 'roddhjav/apparmor.d'. Affects custom tunables",
+    )
 
     args = parser.parse_args()
 
@@ -2724,6 +2883,7 @@ def handleArgs():
 
     return args
 
+
 if __name__ == '__main__':
 
     profileBasename = pathlib.Path(sys.argv[0]).stem
@@ -2735,10 +2895,12 @@ if __name__ == '__main__':
         _Debian = colorize('# Debian/Ubuntu/Mint', 'Bright Cyan')
         _Arch   = colorize('# Arch',               'Bright Cyan')
         _SUSE   = colorize('# openSUSE/SLE',       'Bright Cyan')
-        raise ModuleNotFoundError(f"""'systemd' module not found! Install with:
+        raise ModuleNotFoundError(
+            f"""'systemd' module not found! Install with:
 $ sudo apt install python3-systemd  {_Debian}
 # pacman -Sy python-systemd         {_Arch}
-# zypper in python3-systemd         {_SUSE}""")
+# zypper in python3-systemd         {_SUSE}"""
+        )
 
     args = handleArgs()
 
@@ -2752,7 +2914,9 @@ $ sudo apt install python3-systemd  {_Debian}
     findLogLines_Out = findLogLines(rawLines, args)
     logLines        = findLogLines_Out[0]
     latestTimestamp = findLogLines_Out[1]  # regardless of filtering
-    rewriteLatestTimestamp_Out = rewriteLatestTimestamp(timestampPath, latestTimestamp)  # write as soon as possible
+    rewriteLatestTimestamp_Out = rewriteLatestTimestamp(
+        timestampPath, latestTimestamp
+    )  # write as soon as possible
     errors.update(rewriteLatestTimestamp_Out[0])
     unsortedLines = []
     for l in logLines:
@@ -2765,9 +2929,18 @@ $ sudo apt install python3-systemd  {_Debian}
     allLines = groupLinesByProfile(unsortedLines)
 
     groupedLines_Out = normalizeAndGroup(allLines, args)
-    (fileLines, dbusLines, networkLines, \
-     unixLines, capLines, signalLines, \
-     ptraceLines, mountLines, pivotLines, unknownLines) = groupedLines_Out
+    (
+        fileLines,
+        dbusLines,
+        networkLines,
+        unixLines,
+        capLines,
+        signalLines,
+        ptraceLines,
+        mountLines,
+        pivotLines,
+        unknownLines,
+    ) = groupedLines_Out
 
     if 'file'    in args.type:
         fileLines = adaptTempPaths(fileLines, args.style)
@@ -2808,9 +2981,19 @@ $ sudo apt install python3-systemd  {_Debian}
     if 'unknown' in args.type:
         unknownLines = mergeExactDuplicates(unknownLines)
 
-    sortedLines = sortLines(fileLines,   dbusLines,  networkLines,
-                            unixLines,   capLines,   signalLines,
-                            ptraceLines, mountLines, pivotLines,  unknownLines, args)
+    sortedLines = sortLines(
+        fileLines,
+        dbusLines,
+        networkLines,
+        unixLines,
+        capLines,
+        signalLines,
+        ptraceLines,
+        mountLines,
+        pivotLines,
+        unknownLines,
+        args,
+    )
 
     padding        = findPadding(sortedLines)
     colorizedLines = colorizeLines(sortedLines)
@@ -2819,11 +3002,15 @@ $ sudo apt install python3-systemd  {_Debian}
 
     if not isSupportedDistro():
         not_supported = colorize('not supported', 'Yellow')
-        errors[f'This distro is {not_supported}. Watch out for inconsistencies.'] = 10  # exit code
+        errors[f'This distro is {not_supported}. Watch out for inconsistencies.'] = (
+            10  # exit code
+        )
 
     if os.getuid() != 0:
         as_root_user = colorize('as root user', 'Yellow')
-        errors[f'Designed to be run {as_root_user}. Will not rely on timestamps. Watch out for inconsistencies.'] = 8
+        errors[
+            f'Designed to be run {as_root_user}. Will not rely on timestamps. Watch out for inconsistencies.'
+        ] = 8
 
     if not rawLines:
         taken_over = colorize('taken over', 'Yellow')
@@ -2831,7 +3018,7 @@ $ sudo apt install python3-systemd  {_Debian}
 
     isFirst = True
     highestExitCode = 0
-    for e,c in errors.items():
+    for e, c in errors.items():
         if isFirst:
             print('', file=sys.stderr)
             isFirst = False
