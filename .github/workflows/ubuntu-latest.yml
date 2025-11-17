@@ -1,5 +1,5 @@
 
-name: unittest on Ubuntu 24.04 (Python 3.12 & 3.13)
+name: unittest on Ubuntu 24.04
 
 on:
   push:
